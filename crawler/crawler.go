@@ -46,7 +46,7 @@ func fetch_bytes(
 
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("ERROR: Failed to fetch %s with error %s\n", url, err)
+			fmt.Printf("ERROR: Failed to fetch %s with error %s \n", url, err)
 			delay := min(time.Duration(attempt+1)*retry_delay, 30*time.Second)
 			time.Sleep(delay)
 			continue
@@ -253,6 +253,7 @@ func crawl(
 	starting_url string,
 	seen_urls map[string]bool,
 	config Config,
+	statistics *Statistics,
 ) (map[string]string, error) {
 	client := &http.Client{
 		Timeout: config.request_timeout,
@@ -287,8 +288,13 @@ func crawl(
 		head = state.Head
 		seen_urls = state.Seen
 		index = state.Index
+		*statistics = state.Statistics
 
-		fmt.Printf("INFO: Resuming crawl at %s \n", queue[head])
+		if head < len(queue) {
+			fmt.Printf("INFO: Resuming crawl at %s \n", queue[head])
+		} else {
+			fmt.Printf("INFO: Crawl state is already complete\n")
+		}
 	} else {
 		queue = []string{canonical_start}
 		head = 0
@@ -303,34 +309,41 @@ func crawl(
 
 		current_url := queue[head]
 		head++
+		statistics.inc_discovered()
 		fmt.Printf("INFO: Fetching Bytes from %s \n", current_url)
 		bytes, err := fetch_bytes(current_url, client, config.retry_delay, config.retries, config.accept, config.user_agent)
 		if err != nil {
 			fmt.Printf("ERROR: failed to fetch %s with error %s \n", current_url, err)
+			statistics.inc_failed()
 			continue
 		}
+		statistics.inc_fetched()
 		// to avoid too many requests
 		time.Sleep(config.request_delay)
 		path, err := save_html(allowed_host, config.save_dir, current_url, bytes)
 		if err != nil {
 			fmt.Printf("ERROR: failed to save html %s with error %s \n", current_url, err)
+			statistics.inc_failed()
 			continue
 		}
 		index[current_url] = path
+		statistics.inc_saved()
 
 		extracted_urls, err := extract_urls(seen_urls, bytes, current_url, allowed_host)
 		if err != nil {
 			fmt.Printf("ERROR: failed to extract urls at %s with error %s \n", current_url, err)
+			statistics.inc_failed()
 			continue
 		}
 		queue = append(queue, extracted_urls...)
 
 		// allows to continue at crawling state if restarted
 		state := CrawlState{
-			Queue: queue,
-			Head:  head,
-			Seen:  seen_urls,
-			Index: index,
+			Queue:      queue,
+			Head:       head,
+			Seen:       seen_urls,
+			Index:      index,
+			Statistics: *statistics,
 		}
 
 		if err := save_state(state_path, state); err != nil {
@@ -364,6 +377,7 @@ func save_jsonl(path string, index map[string]string) error {
 }
 
 type Config struct {
+	starting_url    string
 	max_pages       int
 	request_timeout time.Duration
 	retry_delay     time.Duration
@@ -374,11 +388,52 @@ type Config struct {
 	save_dir        string
 }
 
+func new_default_config() Config {
+	return Config{
+		starting_url:    "https://www.tuepedia.de",
+		max_pages:       100,
+		request_timeout: time.Duration(30 * time.Second),
+		retry_delay:     time.Duration(10 * time.Second),
+		request_delay:   time.Duration(500 * time.Millisecond),
+		retries:         3,
+		accept:          "text/html",
+		user_agent:      "SimpleLinkCrawler/0.1",
+		save_dir:        "../data2",
+	}
+}
+
 type CrawlState struct {
-	Queue []string          `json:"queue"`
-	Head  int               `json:"head"`
-	Seen  map[string]bool   `json:"seen"`
-	Index map[string]string `json:"index"`
+	Queue      []string          `json:"queue"`
+	Head       int               `json:"head"`
+	Seen       map[string]bool   `json:"seen"`
+	Index      map[string]string `json:"index"`
+	Statistics Statistics        `json:"statistics"`
+}
+
+type Statistics struct {
+	Fetched    int `json:"fetched"`
+	Discovered int `json:"discovered"`
+	Failed     int `json:"failed"`
+	Saved      int `json:"saved"`
+}
+
+func (stats Statistics) print() {
+	fmt.Printf("Fetched:    %d\n", stats.Fetched)
+	fmt.Printf("Discovered: %d\n", stats.Discovered)
+	fmt.Printf("Failed:     %d\n", stats.Failed)
+	fmt.Printf("Saved:      %d\n", stats.Saved)
+}
+func (stats *Statistics) inc_fetched() {
+	stats.Fetched++
+}
+func (stats *Statistics) inc_discovered() {
+	stats.Discovered++
+}
+func (stats *Statistics) inc_failed() {
+	stats.Failed++
+}
+func (stats *Statistics) inc_saved() {
+	stats.Saved++
 }
 
 func save_state(path string, state CrawlState) error {
@@ -391,6 +446,10 @@ func save_state(path string, state CrawlState) error {
 	}
 
 	data, err := json.MarshalIndent(state, "", " ")
+	if err != nil {
+		fmt.Printf("ERROR: failed to marshal state with error %s \n", err)
+		return err
+	}
 
 	// use temp path to save data even if programm crashes
 	tmp_path := path + ".tmp"
@@ -428,29 +487,21 @@ func load_state(path string) (CrawlState, bool, error) {
 
 func main() {
 	seen_urls := map[string]bool{}
+	config := new_default_config()
+	statistics := Statistics{}
 
-	url := "https://www.tuepedia.de"
-	request_timeout := time.Duration(30 * time.Second)
-	retry_delay := time.Duration(10 * time.Second)
-	request_delay := time.Duration(500 * time.Millisecond)
-	retries := 3
-	accept := "text/html"
-	user_agent := "SimpleLinkCrawler/0.1"
-	html_path := "../data2"
-	jsonl_path := filepath.Join(html_path, "index.jsonl")
-	max_pages := 100
-
-	config := Config{max_pages: max_pages, request_timeout: request_timeout, retry_delay: retry_delay, request_delay: request_delay, retries: retries, accept: accept, user_agent: user_agent, save_dir: html_path}
-
-	index, err := crawl(url, seen_urls, config)
+	index, err := crawl(config.starting_url, seen_urls, config, &statistics)
 	if err != nil {
 		fmt.Printf("ERROR: failed to crawl with error %s \n", err)
 		return
 	}
 
+	jsonl_path := filepath.Join(config.save_dir, "index.jsonl")
 	err = save_jsonl(jsonl_path, index)
 	if err != nil {
 		fmt.Printf("ERROR: failed to save jsonl file with error %s \n", err)
 		return
 	}
+
+	statistics.print()
 }
