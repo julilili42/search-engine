@@ -25,6 +25,7 @@ pub struct Posting {
 pub struct Document {
     pub path: PathBuf,
     pub length: usize,
+    pub text_snippet: String,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -130,9 +131,11 @@ pub fn index(dir_path: &str, index_path: &str) -> io::Result<()> {
         let text = extract_text_from_html(&file_path, &selector)?;
         let terms = tokenize(&text);
 
+        let snippet_length = terms.len() / 10 as usize;
         let document = Document {
             path: file_path,
             length: terms.len(),
+            text_snippet: terms[..snippet_length].join(" "),
         };
         let term_frequency = compute_tf(terms);
 

@@ -22,7 +22,9 @@ fn main() -> io::Result<()> {
             index,
             query,
             top_n,
-        } => search(&index, &query, top_n)?,
+        } => {
+            let _ = search(&index, &query, top_n)?;
+        }
     }
     Ok(())
 }

@@ -7,10 +7,17 @@ use std::{
 
 use crate::{indexer::SearchIndex, tokenizer::tokenize};
 
-pub fn search(index_path: &str, query: &str, top_n: usize) -> io::Result<()> {
+pub struct SearchResult {
+    pub rank: usize,
+    pub score: f32,
+    pub path: String,
+    pub snippet: String,
+}
+
+pub fn search(index_path: &str, query: &str, top_n: usize) -> io::Result<Vec<SearchResult>> {
     let start = Instant::now();
 
-    let index_file = File::open(index_path)?;
+    let index_file = File::open(index_path).expect("TODO");
     println!("INFO: Opened file after {:?}", start.elapsed());
 
     let load_start = Instant::now();
@@ -32,7 +39,7 @@ pub fn search(index_path: &str, query: &str, top_n: usize) -> io::Result<()> {
 
     if query_terms.is_empty() {
         eprintln!("ERROR: No searchable query terms in query.");
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     println!(
@@ -53,15 +60,33 @@ pub fn search(index_path: &str, query: &str, top_n: usize) -> io::Result<()> {
     let mut results = scores.into_iter().collect::<Vec<_>>();
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    for (doc_index, score) in results.iter().take(top_n) {
+    let mut search_results: Vec<SearchResult> = Vec::new();
+
+    for (rank, (doc_index, score)) in results.iter().take(top_n).enumerate() {
         let document = &search_index.documents[*doc_index as usize];
+
+        let result = SearchResult {
+            rank: rank + 1,
+            score: *score,
+            path: document.path.display().to_string(),
+            snippet: document.text_snippet.clone(),
+        };
+
+        search_results.push(result);
+
         println!(
-            "{score:>8.3} {} {} terms",
-            document.path.display(),
-            document.length
+            "\n{rank:>2}. score: {score:>8.3}
+            path:    {path}
+            length:  {length} terms
+            snippet: {snippet}",
+            rank = rank + 1,
+            score = score,
+            path = document.path.display(),
+            length = document.length,
+            snippet = document.text_snippet,
         );
     }
 
     println!("INFO: Search computation took {:?}", search_start.elapsed());
-    Ok(())
+    return Ok(search_results);
 }
