@@ -1,4 +1,4 @@
-search/target
+target/
 search/index.bin
 search/index.json
 /data
