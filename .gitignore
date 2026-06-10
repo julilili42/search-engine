@@ -7,3 +7,5 @@ search/index.json
 __pycache__/
 .venv/
 .vscode/
+*.egg-info
+*.pytest_cache

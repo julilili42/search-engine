@@ -7,6 +7,11 @@ dependencies = [
     "msgpack>=1.1.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
 [project.scripts]
 tuebingen-search = "tuebingen_search.cli:main"
 

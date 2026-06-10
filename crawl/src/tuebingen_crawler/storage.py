@@ -7,7 +7,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Tuple
 from .models import CrawlState, Statistics
-from urllib.parse import urlparse
 import hashlib
 
 # creates unique state path, s.t. multiple hostnames can be distinguished
