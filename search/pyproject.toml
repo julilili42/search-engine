@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Small search engine for TUEpedia HTML files"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi[standard]>=0.136.3",
     "msgpack>=1.1.0",
 ]
 
