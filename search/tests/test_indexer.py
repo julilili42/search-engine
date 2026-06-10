@@ -6,6 +6,7 @@ import msgpack
 import pytest
 
 from tuebingen_search.indexer import (
+    SNIPPET_MAX_TERMS,
     Document,
     build_search_index,
     compute_df,
@@ -130,3 +131,22 @@ def test_index_stores_document_length(tmp_path):
 
     _, length, _ = data["documents"][0]
     assert length == 4
+
+
+def test_index_caps_snippet_length(tmp_path):
+    html_dir = tmp_path / "html"
+    site_dir = html_dir / "site"
+    site_dir.mkdir(parents=True)
+    words = " ".join(f"word{i}" for i in range(SNIPPET_MAX_TERMS * 3))
+    (site_dir / "long.html").write_text(
+        f"<html><body><p>{words}</p></body></html>", encoding="utf-8"
+    )
+    index_path = tmp_path / "index.bin"
+
+    index(str(html_dir), str(index_path))
+
+    with index_path.open("rb") as index_file:
+        data = msgpack.unpack(index_file, raw=False)
+
+    _, _, snippet = data["documents"][0]
+    assert len(snippet.split()) == SNIPPET_MAX_TERMS

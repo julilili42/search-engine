@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from os import walk
 
 import msgpack
 
 from .html import extract_text_from_html, is_html_file
 from .tokenizer import tokenize
 
+logger = logging.getLogger(__name__)
+
 TermFrequency = dict[str, int]
+
+SNIPPET_MAX_TERMS = 40
 
 
 @dataclass(frozen=True)
@@ -92,7 +96,7 @@ def index(dir_path: str, index_path: str) -> None:
 
 
     for i, folder_path in enumerate(folder_paths):
-        print(f"INFO: Indexing folder {i + 1}/{number_of_folders}: {folder_path}", flush=True)
+        logger.info("Indexing folder %d/%d: %s", i + 1, number_of_folders, folder_path)
         
         file_paths = sorted(
             file_path
@@ -102,27 +106,26 @@ def index(dir_path: str, index_path: str) -> None:
 
         for file_path in file_paths:
             if not is_html_file(file_path):
-                print(f"WARN: Skipped non-html file: {file_path}", flush=True)
+                logger.warning("Skipped non-html file: %s", file_path)
                 continue
 
-            print(f"INFO: Indexing {file_path}", flush=True)
+            logger.debug("Indexing %s", file_path)
             text = extract_text_from_html(file_path)
             terms = tokenize(text)
-            snippet_length = max(1, len(terms) // 10) if terms else 0
             document = Document(
                 path=file_path,
                 length=len(terms),
-                text_snippet=" ".join(terms[:snippet_length]),
+                text_snippet=" ".join(terms[:SNIPPET_MAX_TERMS]),
             )
             term_frequency_index[document] = compute_tf(terms)
 
     for document, tf in term_frequency_index.items():
-        print(f"INFO: {document.path} has {len(tf)} unique tokens", flush=True)
+        logger.debug("%s has %d unique tokens", document.path, len(tf))
 
-    print("INFO: Computing inverted index...", flush=True)
+    logger.info("Computing inverted index...")
     search_index = build_search_index(term_frequency_index)
 
-    print(f"INFO: Saving {index_path}...", flush=True)
+    logger.info("Saving %s...", index_path)
     with Path(index_path).open("wb") as index_file:
         msgpack.pack(_to_msgpack(search_index), index_file, use_bin_type=True)
 
