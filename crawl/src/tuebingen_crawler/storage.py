@@ -6,11 +6,34 @@ import logging
 import os
 from dataclasses import asdict
 from pathlib import Path
-from typing import Tuple
-from .models import CrawlState, Statistics
+from typing import Tuple, List
+from .models import CrawlState, Statistics, CrawlSite
 import hashlib
+import tomllib
+from pydantic import TypeAdapter, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# load and validate seed toml list
+def load_seed_toml(path: Path) -> List[CrawlSite]:
+    seed_adapter = TypeAdapter(List[CrawlSite])
+    try:
+        toml_text = path.read_text(encoding="utf-8")
+        data = tomllib.loads(toml_text)
+        entries = seed_adapter.validate_python(data["sites"])
+        return entries
+    except ValidationError as exc:
+        logger.error("Invalid TOML seed entries: %s", exc)
+    except KeyError:
+        logger.error("TOML seed list must contain a 'sites' field")
+        return []
+    except tomllib.TOMLDecodeError as exc:
+        logger.error("Invalid TOML seed list: %s", exc)
+        return []
+    except FileNotFoundError:
+        logger.error("TOML seed list not found")
+        return []
+
 
 # creates unique state path, s.t. multiple hostnames can be distinguished
 def generate_state_path(save_dir: str, host: str, canonical_start_url: str) -> Path:

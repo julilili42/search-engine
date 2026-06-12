@@ -1,0 +1,14 @@
+[[sites]]
+url = "https://www.tuebingen.de/en/"
+max_pages = 1000
+request_delay = 0.5
+
+[[sites]]
+url = "https://uni-tuebingen.de/en/"
+max_pages = 800
+request_delay = 0.5
+
+[[sites]]
+url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
+max_pages = 100
+request_delay = 1.0

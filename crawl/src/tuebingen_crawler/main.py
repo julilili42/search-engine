@@ -3,15 +3,21 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from .crawler import crawl, save_jsonl
-from .models import Config, CrawlSite
+from .storage import load_seed_toml
+from .models import Config
 
 logger = logging.getLogger(__name__)
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    tuepedia = CrawlSite(url="https://www.tuepedia.de/", max_pages=1000)
-    wiki_tuebingen = CrawlSite(url="https://de.wikipedia.org/wiki/T%C3%BCbingen", max_pages=1000)
-    config = Config(sites=[wiki_tuebingen, tuepedia])
+
+    package_dir = Path(__file__).resolve().parent
+    crawl_root = package_dir.parent.parent
+    seed_path = crawl_root / "seeds.toml"
+
+    sites = load_seed_toml(seed_path)
+    print(sites)
+    config = Config(sites)
     
     try:
         index = crawl(config)

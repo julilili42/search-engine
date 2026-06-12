@@ -2,9 +2,12 @@
 from __future__ import annotations
 from dataclasses import field, dataclass
 from typing import List, Dict
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True)
-class CrawlSite:
+# since we read from json, we need to validate the input
+class CrawlSite(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, str_strip_whitespace=True)
+
     url: str = "https://www.tuepedia.de/"
     max_pages: int = 100
     request_timeout: float = 30.0
