@@ -1,5 +1,3 @@
-"""HTML extraction helpers."""
-
 from __future__ import annotations
 
 from html.parser import HTMLParser

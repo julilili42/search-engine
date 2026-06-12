@@ -1,6 +1,3 @@
-"""Tokenization logic equivalent to the Rust tokenizer."""
-
-
 def tokenize(text: str) -> list[str]:
     tokens: list[str] = []
     i = 0

@@ -1,7 +1,7 @@
 [project]
 name = "tuebingen-search"
 version = "0.1.0"
-description = "Small search engine for TUEpedia HTML files"
+description = "Small search engine for HTML files"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.136.3",
@@ -14,7 +14,7 @@ dev = [
 ]
 
 [project.scripts]
-tuebingen-search = "tuebingen_search.cli:main"
+tuebingen-search = "tuebingen_search.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tuebingen_search"]

@@ -1,5 +1,3 @@
-"""HTTP API over a serialized index."""
-
 from __future__ import annotations
 
 import logging
