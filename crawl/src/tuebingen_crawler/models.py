@@ -63,6 +63,5 @@ class CrawlState:
     queue: List[str] = field(default_factory=list)
     head: int = 0
     seen: Dict[str, bool] = field(default_factory=dict)
-    index: Dict[str, str] = field(default_factory=dict)
     statistics: Statistics = field(default_factory=Statistics)
 

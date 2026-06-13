@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from .crawler import crawl_hostname, save_jsonl
+from .crawler import crawl_hostname
 from .storage import load_seed_toml
 from .models import Config
+from .page_store import PageStore
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,16 @@ def main() -> None:
     data_dir = project_root / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    db_path = data_dir / "pages.sqlite"
     sites = load_seed_toml(seed_path)
     config = Config(sites=sites, save_dir=data_dir)
     
-    try:
-        index = crawl_hostname(config)
-    except Exception as exc:
-        logger.error("Failed to crawl with error %s", exc)
-        return
-
-    jsonl_path = Path(config.save_dir) / "index.jsonl"
-    try:
-        save_jsonl(jsonl_path, index)
-    except Exception as exc:
-        logger.error("Failed to save jsonl file with error %s", exc)
-        return
+    with PageStore(db_path) as page_store:
+        try:
+            crawl_hostname(config, page_store)
+        except Exception as exc:
+            logger.error("Failed to crawl with error %s", exc)
+            return
 
 if __name__ == "__main__":
     main()
