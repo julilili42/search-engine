@@ -115,7 +115,7 @@ def test_fetch_bytes_retries_on_request_error(sleep_calls):
 
 def test_save_html_writes_file_under_hostname(tmp_path):
     body = b"<html>content</html>"
-    path = save_html("www.tuepedia.de", str(tmp_path), "https://www.tuepedia.de/wiki/a", body)
+    path = save_html("www.tuepedia.de", tmp_path, "https://www.tuepedia.de/wiki/a", body)
 
     saved = Path(path)
     assert saved.parent == tmp_path / "www.tuepedia.de"
@@ -125,8 +125,8 @@ def test_save_html_writes_file_under_hostname(tmp_path):
 
 
 def test_save_html_distinguishes_urls_with_same_slug(tmp_path):
-    first = save_html("host", str(tmp_path), "https://host/wiki/a", b"first")
-    second = save_html("host", str(tmp_path), "https://host/wiki/a/", b"second")
+    first = save_html("host", tmp_path, "https://host/wiki/a", b"first")
+    second = save_html("host", tmp_path, "https://host/wiki/a/", b"second")
 
     assert first != second
     assert Path(first).read_bytes() == b"first"

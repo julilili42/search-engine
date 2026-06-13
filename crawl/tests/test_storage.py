@@ -7,8 +7,8 @@ from tuebingen_crawler.storage import generate_state_path, load_state, save_stat
 
 
 def test_generate_state_path_is_deterministic(tmp_path):
-    first = generate_state_path(str(tmp_path), "www.tuepedia.de", "https://www.tuepedia.de/")
-    second = generate_state_path(str(tmp_path), "www.tuepedia.de", "https://www.tuepedia.de/")
+    first = generate_state_path(tmp_path, "www.tuepedia.de", "https://www.tuepedia.de/")
+    second = generate_state_path(tmp_path, "www.tuepedia.de", "https://www.tuepedia.de/")
     assert first == second
     assert first.parent == tmp_path / "www.tuepedia.de"
     assert first.name.startswith("crawl_state-")
@@ -16,8 +16,8 @@ def test_generate_state_path_is_deterministic(tmp_path):
 
 
 def test_generate_state_path_differs_per_start_url(tmp_path):
-    first = generate_state_path(str(tmp_path), "host", "https://host/a")
-    second = generate_state_path(str(tmp_path), "host", "https://host/b")
+    first = generate_state_path(tmp_path, "host", "https://host/a")
+    second = generate_state_path(tmp_path, "host", "https://host/b")
     assert first != second
 
 
@@ -27,7 +27,6 @@ def test_save_and_load_state_roundtrip(tmp_path):
         queue=["https://host/", "https://host/a"],
         head=1,
         seen={"https://host/": True, "https://host/a": True},
-        index={"https://host/": "/data/host/index.html"},
         statistics=Statistics(fetched=1, discovered=2, failed=0, saved=1),
     )
 
@@ -71,7 +70,6 @@ def test_load_state_with_missing_keys_uses_defaults(tmp_path):
     assert state.queue == ["https://host/"]
     assert state.head == 0
     assert state.seen == {}
-    assert state.index == {}
     assert state.statistics == Statistics()
 
 
