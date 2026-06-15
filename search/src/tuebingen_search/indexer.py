@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 SNIPPET_MAX_TERMS = 40
 
-
 def build_search_index(term_freq_index: dict[Document, TermFrequency]) -> SearchIndex:
     idf = compute_idf(term_freq_index)
     documents: list[Document] = []
@@ -41,52 +40,41 @@ def add_document_to_index(
         inverted_index[term].append(Posting(doc_index=doc_index, score=score))
 
 
-def index(dir_path: Path, index_path: Path, pages_db: PageLoad) -> None:
+def index(index_path: Path, pages_db: PageLoad) -> None:
     term_frequency_index: dict[Document, TermFrequency] = {}
     
-    
-    folder_paths = sorted(folder_path for folder_path in dir_path.iterdir() if folder_path.is_dir())
-    number_of_folders = len(folder_paths) 
+    logger.info("Iterating over pages...")
+    records = pages_db.iter_html_pages()
+    previous_host = ""
+    for record in records:
+        file_path = record.path
 
-    # TODO
-    # remove file directory/file walk by iterating over db records
-    # records = list(pages_db.iter_html_pages())
+        if not file_path.exists():
+            logger.warning("Skipped missing file: %s", file_path)
+            continue
 
-    # computes term frequency for each html-file in each hostname folder
-    for i, folder_path in enumerate(folder_paths):
-        logger.info("Indexing folder %d/%d: %s", i + 1, number_of_folders, folder_path)
-        
-        file_paths = sorted(
-            file_path
-            for file_path in folder_path.rglob("*")
-            if file_path.is_file()
-        )
-
-        for file_path in file_paths:
-            if not is_html_file(file_path):
+        if not is_html_file(file_path):
                 logger.warning("Skipped non-html file: %s", file_path)
                 continue
+        
+        if record.host != previous_host:
+            logger.info(f"Indexing {record.host}")
+            previous_host = record.host
 
-            logger.debug("Indexing %s", file_path)
-            text = extract_text_from_html(file_path)
-            terms = tokenize(text)
-            
+        logger.debug("Indexing %s", file_path)
+        text = extract_text_from_html(file_path)
+        terms = tokenize(text)
 
-            # extract url from SQLite database, uses file_path for the search 
-            entry = pages_db.get_page_by_file_path(file_path)
-            url = entry.url if entry else None
-
-            document = Document(
-                path=file_path,
-                url=url,
-                length=len(terms),
-                text_snippet=" ".join(terms[:SNIPPET_MAX_TERMS]),
-            )
-            term_frequency_index[document] = compute_tf(terms)
+        document = Document(
+            path=file_path,
+            url=record.url,
+            length=len(terms),
+            text_snippet=" ".join(terms[:SNIPPET_MAX_TERMS]),
+        )
+        term_frequency_index[document] = compute_tf(terms)
 
     logger.info("Computing inverted index...")
     search_index = build_search_index(term_frequency_index)
 
-    logger.info("Saving %s...", index_path)
+    logger.info("Saving %s", index_path)
     save_index(index_path, search_index)    
-

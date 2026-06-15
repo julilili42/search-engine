@@ -54,12 +54,13 @@ class PageLoad:
         return self._row_to_page(row)
     
 
-    def iter_pages(self) -> Iterator[PageRecord]:
+    def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
             """
             SELECT url, host, path, status_code, content_type,
-                   content_hash, fetched_at, indexed_at
+                content_hash, fetched_at, indexed_at
             FROM pages
+            WHERE content_type IS NULL OR content_type LIKE 'text/html%'
             ORDER BY id
             """
         )

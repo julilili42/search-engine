@@ -7,7 +7,6 @@ def build_parser() -> argparse.ArgumentParser:
     current_dir = Path(__file__).resolve().parent
     
     project_root = current_dir.parent.parent.parent
-    data_dir = project_root / "data"
     db_path = project_root / "data" / "pages.sqlite"
     output_path = project_root / "index.bin"
 
@@ -18,7 +17,6 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index_parser = subparsers.add_parser("index")
-    index_parser.add_argument("-d", "--dir", default=data_dir)
     index_parser.add_argument("--db", type=Path, default=db_path)
     index_parser.add_argument("-o", "--output", default=output_path)
 

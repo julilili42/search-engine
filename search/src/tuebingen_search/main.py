@@ -9,11 +9,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = build_parser().parse_args()
     if args.command == "index":
-        data_dir = Path(args.dir)
         output_path = Path(args.output)
         pages_db = PageLoad(args.db)
 
-        index(data_dir, output_path, pages_db)
+        index(output_path, pages_db)
     elif args.command == "search":
         for result in search(args.index, args.query, args.top_n):
             print(

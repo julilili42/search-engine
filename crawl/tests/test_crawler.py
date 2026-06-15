@@ -78,7 +78,7 @@ def run_crawl(client, tmp_path, page_store, **site_overrides):
 
 
 def stored_urls(page_store) -> list[str]:
-    return sorted(page.url for page in page_store.iter_pages())
+    return sorted(page.url for page in page_store.iter_html_pages())
 
 
 def test_crawl_site_visits_all_reachable_pages(client, tmp_path, page_store, requested_paths):
@@ -97,7 +97,7 @@ def test_crawl_site_visits_all_reachable_pages(client, tmp_path, page_store, req
 def test_crawl_site_saves_html_files(client, tmp_path, page_store):
     run_crawl(client, tmp_path, page_store)
 
-    for page in page_store.iter_pages():
+    for page in page_store.iter_html_pages():
         saved = Path(page.path)
         assert saved.exists()
         assert saved.read_bytes() == PAGES[httpx.URL(page.url).path]

@@ -156,19 +156,6 @@ class PageStore:
 
         return self._row_to_page(row)
 
-    def iter_pages(self) -> Iterator[PageRecord]:
-        rows = self.con.execute(
-            """
-            SELECT url, host, path, status_code, content_type,
-                   content_hash, fetched_at, indexed_at
-            FROM pages
-            ORDER BY id
-            """
-        )
-
-        for row in rows:
-            yield self._row_to_page(row)
-
     def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
             """
