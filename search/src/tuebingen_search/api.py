@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     index_path = Path(os.environ.get("INDEX_PATH", str(DEFAULT_INDEX_PATH)))
-    if not index_path.exists:
+    if not index_path.exists():
         raise RuntimeError(f"Search index does not exist: {index_path}.")
 
     logger.info("Loading index from %s", index_path)

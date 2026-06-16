@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from pathlib import Path
-from .urls import url_slug
 import httpx
+from pathlib import Path
 from http import HTTPStatus
+from .urls import url_slug
+from .models import FetchResult
 
 logger = logging.getLogger(__name__)
 
@@ -15,50 +16,61 @@ def fetch_bytes(
     url: str,
     retry_delay: float,
     retries: int,
-) -> bytes:
+) -> FetchResult:
     for attempt in range(retries):
         if attempt > 0:
             logger.info("Retry attempt %d ...", attempt)
 
         try:
             response = client.get(url)
-            status = response.status_code
+            status_code = response.status_code
+            content_type = response.headers.get("Content-Type", "")
+            media_type = content_type.partition(";")[0].strip().lower()
 
-            if status == HTTPStatus.TOO_MANY_REQUESTS:
+
+            if status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                # last retry no delay
+                if attempt == retries - 1: 
+                    return FetchResult(None, status_code, content_type)
+
                 # extract retry after field from header to get exact delay time
                 retry_after = response.headers.get("Retry-After")
-                if retry_after:
-                    try:
-                        delay = float(retry_after)
-                    except ValueError:
-                        # extraction was not successfull, use delay probing...
-                        delay = min((attempt + 1) * retry_delay, 30.0)
-                else:
-                    delay = min((attempt + 1) * retry_delay, 30.0)
+                try:
+                    delay = (
+                        float(retry_after)
+                        if retry_after is not None
+                        else (attempt + 1) * retry_delay
+                    )
+                except ValueError:
+                    # extraction was not successfull, use delay probing...
+                    delay = (attempt + 1) * retry_delay
 
+                delay = min(delay, 30.0)
                 logger.warning("Rate limited. Waiting %ss", delay)
+
                 time.sleep(delay)
                 continue
+            
+            if status_code < 200 or status_code >= 300:
+                logger.warning("Bad status %d for %s", status_code, url)
+                return FetchResult(None, status_code, content_type)
 
-            if status < 200 or status >= 300:
-                logger.warning("Bad status %d for %s", status, url)
-                continue
+            if media_type not in {"text/html", "application/xhtml+xml"}:
+                return FetchResult(None, status_code, content_type)
 
-            content_type = response.headers.get("Content-Type", "")
-            if "text/html" not in content_type:
-                logger.info("Skipping non-html file %s", url)
-                continue
-        
-            return response.content
+            return FetchResult(response.content, status_code, content_type)
 
         except httpx.RequestError as exc:
             logger.warning("Failed to fetch %s with error %s", url, exc)
+
+            if attempt == retries - 1:
+                raise RuntimeError(
+                    f"Failed to fetch {url} after {retries} attempts"
+                ) from exc
+            
             delay = min((attempt + 1) * retry_delay, 30.0)
             time.sleep(delay)
             continue
-
-    raise RuntimeError(f"ERROR: Failed to fetch {url} after {retries} retries")
-
 
 def save_html(hostname: str, base_dir: Path, page_url: str, body: bytes) -> str:
     digest = hashlib.sha256(page_url.encode("utf-8")).hexdigest()[:8]

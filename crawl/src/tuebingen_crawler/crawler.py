@@ -72,24 +72,46 @@ def crawl_site(
             state.statistics.inc_failed()
             continue
 
-        logger.info("Fetching bytes from %s", current_url)
         try:
-            body = fetch_bytes(
+            fetch_result = fetch_bytes(
                 client=client,
                 url=current_url,
                 retry_delay=site.retry_delay,
                 retries=site.retries,
             )
         except Exception as exc:
-            logger.error("Failed to fetch %s with error %s", current_url, exc)
+            logger.error(
+                "%-7s | %-3s | %-24s | %s",
+                "FAILED",
+                "-",
+                "-",
+                current_url,
+            )
             state.statistics.inc_failed()
             continue
 
         state.statistics.inc_fetched()
         time.sleep(site.request_delay)
 
+        if fetch_result.body is None:
+            logger.info(
+                "%-7s | %3d | %-24s | %s",
+                "SKIPPED",
+                fetch_result.status_code,
+                fetch_result.content_type,
+                current_url,
+            )
+            continue
+        
+        logger.info(
+            "%-7s | %3d | %-24s | %s",
+            "FETCHED",
+            fetch_result.status_code,
+            fetch_result.content_type,
+            current_url,
+        )
         try:
-            path = save_html(allowed_host, save_dir, current_url, body)
+            path = save_html(allowed_host, save_dir, current_url, fetch_result.body)
         except Exception as exc:
             logger.error("Failed to save html %s with error %s", current_url, exc)
             state.statistics.inc_failed()
@@ -100,15 +122,15 @@ def crawl_site(
             url=current_url,
             host=allowed_host,
             path=path,
-            status_code=200,
-            content_type="text/html",
-            content_hash=hashlib.sha256(body).hexdigest(),
+            status_code=fetch_result.status_code,
+            content_type=fetch_result.content_type,
+            content_hash=hashlib.sha256(fetch_result.body).hexdigest(),
         )
 
         state.statistics.inc_saved()
 
         try:
-            extracted_urls = extract_urls(state.seen, body, current_url, allowed_host)
+            extracted_urls = extract_urls(state.seen, fetch_result.body, current_url, allowed_host)
         except Exception as exc:
             logger.error("Failed to extract urls at %s with error %s", current_url, exc)
             state.statistics.inc_failed()

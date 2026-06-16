@@ -2,19 +2,15 @@
 from __future__ import annotations
 from dataclasses import field, dataclass
 from typing import List, Dict
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 
-# since we read from json, we need to validate the input
-class CrawlSite(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, str_strip_whitespace=True)
+@dataclass
+class FetchResult:
+    body: bytes | None
+    status_code: int
+    content_type: str
 
-    url: str = "https://www.tuepedia.de/"
-    max_pages: int = 100
-    request_timeout: float = 30.0
-    retry_delay: float = 10.0
-    request_delay: float = 0.01
-    retries: int = 3
 
 
 @dataclass
@@ -57,6 +53,16 @@ class Statistics:
     def inc_saved(self) -> None:
         self.saved += 1
 
+# since we read from json, we need to validate the input
+class CrawlSite(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, str_strip_whitespace=True)
+
+    url: str = "https://www.tuepedia.de/"
+    max_pages: int = 100
+    request_timeout: float = 30.0
+    retry_delay: float = 10.0
+    request_delay: float = 0.01
+    retries: int = Field(default=3, ge=1)
 
 @dataclass
 class CrawlState:
@@ -64,4 +70,5 @@ class CrawlState:
     head: int = 0
     seen: Dict[str, bool] = field(default_factory=dict)
     statistics: Statistics = field(default_factory=Statistics)
+
 
