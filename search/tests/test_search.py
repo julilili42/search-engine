@@ -2,7 +2,8 @@ import pytest
 
 from tuebingen_search.indexer import index
 from helpers import make_page_load
-from tuebingen_search.search import search
+from tuebingen_search.models import Document, Posting, SearchIndex
+from tuebingen_search.search import generate_snippet, search, search_index
 
 PAGES = {
     "apple.html": "<html><body><p>apple apple apple banana</p></body></html>",
@@ -72,3 +73,39 @@ def test_search_query_is_tokenized_and_deduplicated(index_path):
     twice = search(index_path, "Apple, APPLE!", top_n=10)
 
     assert [(r.path, r.score) for r in twice] == [(r.path, r.score) for r in once]
+
+
+def test_generate_snippet_includes_query_term_with_context(tmp_path):
+    page = tmp_path / "page.html"
+    page.write_text(
+        "<html><body><p>zero one two target three four five</p></body></html>",
+        encoding="utf-8",
+    )
+
+    snippet = generate_snippet(page, {"target"}, context_size=2)
+
+    assert snippet == "... one two target three four ..."
+
+
+def test_generate_snippet_falls_back_to_start_of_document(tmp_path):
+    page = tmp_path / "page.html"
+    page.write_text(
+        "<html><body><p>one two three</p></body></html>",
+        encoding="utf-8",
+    )
+
+    assert generate_snippet(page, {"missing"}, context_size=2) == "one two three"
+
+
+def test_search_returns_result_when_snippet_source_is_missing(tmp_path):
+    missing_page = tmp_path / "missing.html"
+    index = SearchIndex(
+        documents=[Document(path=missing_page, url=None, length=1)],
+        inverted_index={"apple": [Posting(doc_index=0, score=1.0)]},
+    )
+
+    results = search_index(index, "apple", top_n=10)
+
+    assert len(results) == 1
+    assert results[0].path == missing_page
+    assert results[0].snippet == ""

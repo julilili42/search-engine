@@ -4,14 +4,14 @@ from pathlib import Path
 import msgpack
 import pytest
 
-from tuebingen_search.indexer import SNIPPET_MAX_TERMS, build_search_index, index
+from tuebingen_search.indexer import build_search_index, index
 from tuebingen_search.scoring import compute_df, compute_idf, compute_tf, compute_tf_idf
 from tuebingen_search.models import Document
 from helpers import make_page_load
 
 
 def make_document(name: str) -> Document:
-    return Document(path=Path(name), url=None, length=0, text_snippet="")
+    return Document(path=Path(name), url=None, length=0)
 
 def test_compute_tf_counts_term_occurrences():
     assert compute_tf(["a", "b", "a", "c", "a"]) == {"a": 3, "b": 1, "c": 1}
@@ -132,27 +132,29 @@ def test_index_stores_document_length(tmp_path):
     with index_path.open("rb") as index_file:
         data = msgpack.unpack(index_file, raw=False)
 
-    _, _, length, _ = data["documents"][0]
+    _, _, length = data["documents"][0]
     assert length == 4
 
 
-def test_index_caps_snippet_length(tmp_path):
+def test_index_does_not_store_static_snippets(tmp_path):
     html_dir = tmp_path / "html"
     site_dir = html_dir / "site"
     site_dir.mkdir(parents=True)
-    words = " ".join(f"word{i}" for i in range(SNIPPET_MAX_TERMS * 3))
-    (site_dir / "long.html").write_text(
-        f"<html><body><p>{words}</p></body></html>", encoding="utf-8"
+    (site_dir / "a.html").write_text(
+        "<html><body><p>one two three four</p></body></html>", encoding="utf-8"
     )
     index_path = tmp_path / "index.bin"
 
     pages_db = make_page_load(
-        tmp_path / "pages.sqlite", {site_dir / "long.html": "text/html"}
+        tmp_path / "pages.sqlite", {site_dir / "a.html": "text/html"}
     )
     index(index_path, pages_db)
 
     with index_path.open("rb") as index_file:
         data = msgpack.unpack(index_file, raw=False)
 
-    _, _, _, snippet = data["documents"][0]
-    assert len(snippet.split()) == SNIPPET_MAX_TERMS
+    assert data["documents"][0] == [
+        str(site_dir / "a.html"),
+        "https://example.test/a.html",
+        4,
+    ]

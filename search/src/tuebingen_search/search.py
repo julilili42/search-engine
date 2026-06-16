@@ -55,7 +55,12 @@ def generate_snippet(
     query_terms: set[str],
     context_size: int,
 ) -> str:
-    text = extract_text_from_html(path)
+    try:
+        text = extract_text_from_html(path)
+    except OSError:
+        logger.warning("Could not generate snippet from %s", path, exc_info=True)
+        return ""
+
     terms = tokenize(text)
 
     for index, term in enumerate(terms):
