@@ -11,7 +11,7 @@ from collections.abc import Sequence
 logger = logging.getLogger(__name__)
 
 
-def search_index(index: SearchIndex, query: str, top_n: int, context_size: int) -> list[SearchResult]:
+def search_index(index: SearchIndex, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
 
@@ -52,7 +52,7 @@ def search_index(index: SearchIndex, query: str, top_n: int, context_size: int) 
     return search_results
 
 
-def search(index_path: str, query: str, top_n: int, context_size: int) -> list[SearchResult]:
+def search(index_path: str, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     return search_index(load_index(index_path), query, top_n, context_size)
 
 def generate_snippet(
