@@ -1,6 +1,6 @@
 # Tübingen Search Engine
 
-> A custom search engine with link crawling and an indexing pipeline.
+> A custom search engine with link crawling and an indexing pipeline and client frontend.
 
 ## Usage
 
@@ -15,10 +15,8 @@ The URLs to crawl are defined in `crawl/seeds.toml` (one `[[sites]]` entry per s
 ### 2. Build the index
 
 ```bash
-uv run tuebingen-search index -d ../data -o index.bin
+uv run tuebingen-search index 
 ```
-
-`-d` directory with the crawled sites, `-o` output path for the index.
 
 ### 3. Search
 
@@ -28,10 +26,15 @@ uv run tuebingen-search search -q "boris palmer" -t 5
 
 `-q` query (required), `-i` index file (default `index.bin`), `-t` number of results (default 10).
 
-### Optional: HTTP API
+### Optional: Client Frontend
+Start backend via
 
 ```bash
-INDEX_PATH=search/index.bin uv run uvicorn tuebingen_search.api:app
+uv run uvicorn tuebingen_search.api:app
 ```
 
-Query `http://127.0.0.1:8000/search?q=boris+palmer&top_n=5` (docs at `/docs`).
+and in `client/` the frontend with
+
+```bash
+npm run dev
+```

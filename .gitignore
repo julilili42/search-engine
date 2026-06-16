@@ -11,3 +11,10 @@ __pycache__/
 *.pytest_cache
 .claude
 index.bin
+
+# client (React/Vite)
+node_modules/
+client/dist/
+client/node_modules/
+client/.tmp/
+*.local
