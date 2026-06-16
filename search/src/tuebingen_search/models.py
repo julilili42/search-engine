@@ -2,11 +2,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 TermFrequency = dict[str, int]
+TermPosition = dict[str, list[int]]
 
 @dataclass(frozen=True)
 class Posting:
     doc_index: int
     score: float
+    positions: list[int]
 
 
 @dataclass(frozen=True)
@@ -14,6 +16,7 @@ class Document:
     path: Path
     url: str | None
     length: int
+    terms: tuple[str, ...]
 
 
 @dataclass(frozen=True)

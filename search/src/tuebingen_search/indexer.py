@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .html import extract_text_from_html, is_html_file
 from .tokenizer import tokenize
-from .models import Document, TermFrequency, SearchIndex, Posting
+from .models import Document, TermFrequency, TermPosition, SearchIndex, Posting
 from .scoring import (
     compute_bm25_idf,
     compute_bm25_score,
@@ -18,7 +18,7 @@ from .load_pages import PageLoad
 
 logger = logging.getLogger(__name__)
 
-def build_search_index(term_freq_index: dict[Document, TermFrequency]) -> SearchIndex:
+def build_search_index(term_freq_index: dict[Document, TermFrequency], term_positions: dict[Document, TermPosition]) -> SearchIndex:
     idf = compute_bm25_idf(term_freq_index)
     average_document_length = compute_average_document_length(term_freq_index)
 
@@ -26,14 +26,16 @@ def build_search_index(term_freq_index: dict[Document, TermFrequency]) -> Search
     # retrieval of all urls which contain a word, fast lookup for given word
     inverted_index: defaultdict[str, list[Posting]] = defaultdict(list)
 
-    for document, term_frequency in term_freq_index.items():
-        doc_index = len(documents)
+    for doc_index, (document, term_frequency) in enumerate(term_freq_index.items()):
         documents.append(document)
+
+        term_position = term_positions[document]
         add_document_to_index(
             inverted_index,
             doc_index,
             document,
             term_frequency,
+            term_position,
             idf,
             average_document_length,
         )
@@ -46,6 +48,7 @@ def add_document_to_index(
     doc_index: int,
     document: Document,
     term_frequency: TermFrequency,
+    term_position: dict[str, list[int]],
     idf: dict[str, float],
     average_document_length: float,
 ) -> None:
@@ -56,11 +59,13 @@ def add_document_to_index(
             document_length=document.length,
             average_document_length=average_document_length,
         )
-        inverted_index[term].append(Posting(doc_index=doc_index, score=score))
+        inverted_index[term].append(Posting(doc_index=doc_index, score=score, positions=term_position[term]))
 
 def index(index_path: Path, pages_db: PageLoad) -> None:
     term_frequency_index: dict[Document, TermFrequency] = {}
-    
+    term_positions: dict[Document, TermPosition] = {}
+
+
     logger.info("Iterating over pages...")
     records = pages_db.iter_html_pages()
     previous_host = ""
@@ -87,11 +92,19 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
             path=file_path,
             url=record.url,
             length=len(terms),
+            terms=tuple(terms)
         )
+
+        # collecting indices at which terms appear, s.t. we can generate a query based snippet in the search
+        positions: TermPosition = defaultdict(list)
+        for position, term in enumerate(terms):
+            positions[term].append(position)
+
+        term_positions[document] = positions
         term_frequency_index[document] = compute_tf(terms)
 
     logger.info("Computing inverted index...")
-    search_index = build_search_index(term_frequency_index)
+    search_index = build_search_index(term_frequency_index, term_positions)
 
     logger.info("Saving %s", index_path)
     save_index(index_path, search_index)    
