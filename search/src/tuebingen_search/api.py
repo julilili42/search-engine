@@ -30,8 +30,9 @@ app = FastAPI(title="Tübingen Search", lifespan=lifespan)
 def search_api(
     q: str = Query(min_length=1),
     top_n: int = Query(10, ge=1, le=100),
+    context_size: int = Query(20, ge=1, le=100),
 ):
-    return search_index(app.state.index, q, top_n)
+    return search_index(app.state.index, q, top_n, context_size)
 
 
 @app.get("/health")

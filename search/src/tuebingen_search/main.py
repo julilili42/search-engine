@@ -14,7 +14,7 @@ def main() -> None:
 
         index(output_path, pages_db)
     elif args.command == "search":
-        for result in search(args.index, args.query, args.top_n):
+        for result in search(args.index, args.query, args.top_n, args.context_size):
             print(
                 f"\n{result.rank:>2}. score:   {result.score:>8.3f}\n"
                 f"    path:    {result.path}\n"

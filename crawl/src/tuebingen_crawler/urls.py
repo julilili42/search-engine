@@ -18,6 +18,28 @@ class LinkExtractor(HTMLParser):
             if key.lower() == "href" and value:
                 self.hrefs.append(value)
 
+
+def extract_urls(
+    seen_urls: Dict[str, bool],
+    body: bytes,
+    current_url: str,
+    allowed_host: str,
+) -> List[str]:
+    parser = LinkExtractor()
+    parser.feed(body.decode("utf-8", errors="replace"))
+
+    urls: List[str] = []
+    for href in parser.hrefs:
+        final_url, is_canonical = canonical_url(href, current_url, allowed_host)
+        if not is_canonical:
+            continue
+
+        if not seen_urls.get(final_url, False):
+            seen_urls[final_url] = True
+            urls.append(final_url)
+
+    return urls
+
 def hostname_for_url(starting_url: str) -> str:
     parsed = urlparse(starting_url)
 
@@ -54,28 +76,6 @@ def canonical_url(raw_url: str, base_url: str, allowed_host: str) -> Tuple[str, 
         "",  # fragment ignored
     ))
     return final_url, True
-
-
-def extract_urls(
-    seen_urls: Dict[str, bool],
-    body: bytes,
-    current_url: str,
-    allowed_host: str,
-) -> List[str]:
-    parser = LinkExtractor()
-    parser.feed(body.decode("utf-8", errors="replace"))
-
-    urls: List[str] = []
-    for href in parser.hrefs:
-        final_url, is_canonical = canonical_url(href, current_url, allowed_host)
-        if not is_canonical:
-            continue
-
-        if not seen_urls.get(final_url, False):
-            seen_urls[final_url] = True
-            urls.append(final_url)
-
-    return urls
 
 
 def url_slug(page_url: str) -> str:

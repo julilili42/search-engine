@@ -1,13 +1,11 @@
 # search/tests/test_html.py
 from pathlib import Path
 
-from tuebingen_search.html import TextExtractor, extract_text_from_html, is_html_file
+from tuebingen_search.html import extract_text, extract_text_from_html, is_html_file
 
 
 def extract(html: str) -> str:
-    parser = TextExtractor()
-    parser.feed(html)
-    return parser.text
+    return extract_text(html)
 
 
 def test_extracts_text_from_selected_tags():

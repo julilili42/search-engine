@@ -18,5 +18,6 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("-i", "--index", default=DEFAULT_INDEX_PATH)
     search_parser.add_argument("-q", "--query", required=True)
     search_parser.add_argument("-t", "--top-n", type=int, default=10)
+    search_parser.add_argument("-c", "--context-size", type=int, default=20)
 
     return parser

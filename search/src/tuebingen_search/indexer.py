@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+
 from collections import defaultdict
 from pathlib import Path
 
@@ -13,7 +15,7 @@ from .scoring import (
     compute_average_document_length,
     compute_tf,
 )
-from .storage import save_index
+from .storage import save_index, elapsed
 from .load_pages import PageLoad
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,9 @@ def add_document_to_index(
         inverted_index[term].append(Posting(doc_index=doc_index, score=score, positions=term_position[term]))
 
 def index(index_path: Path, pages_db: PageLoad) -> None:
+    start = time.perf_counter()
+    extraction_time = 0.0
+
     term_frequency_index: dict[Document, TermFrequency] = {}
     term_positions: dict[Document, TermPosition] = {}
 
@@ -85,7 +90,11 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
             previous_host = record.host
 
         logger.debug("Indexing %s", file_path)
+        
+        start_extraction = time.perf_counter()
         text = extract_text_from_html(file_path)
+        extraction_time += (time.perf_counter() - start_extraction)
+
         terms = tokenize(text)
 
         document = Document(
@@ -107,4 +116,6 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
     search_index = build_search_index(term_frequency_index, term_positions)
 
     logger.info("Saving %s", index_path)
-    save_index(index_path, search_index)    
+    save_index(index_path, search_index)  
+    logger.info(f"Index computation took {elapsed(start)}")
+    logger.info(f"Extraction time took {extraction_time:.6f} s")
