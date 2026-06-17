@@ -11,6 +11,8 @@ __pycache__/
 *.pytest_cache
 .claude
 index.bin
+results.tsv
+
 
 # client (React/Vite)
 node_modules/

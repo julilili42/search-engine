@@ -7,6 +7,8 @@ from .tokenizer import tokenize
 from .models import SearchResult, SearchIndex
 from .storage import load_index, elapsed
 from collections.abc import Sequence
+from pathlib import Path
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ def search_index(index: SearchIndex, query: str, top_n: int, context_size: int =
     return search_results
 
 
-def search(index_path: str, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
+def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     return search_index(load_index(index_path), query, top_n, context_size)
 
 def generate_snippet(

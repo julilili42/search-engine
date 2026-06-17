@@ -18,7 +18,7 @@ def test_index_command_custom_arguments():
         ["index", "--db", "/tmp/pages.sqlite", "-o", "/tmp/out.bin"]
     )
     assert args.db == Path("/tmp/pages.sqlite")
-    assert args.output == "/tmp/out.bin"
+    assert args.output == Path("/tmp/out.bin")
 
 
 def test_search_command_requires_query():

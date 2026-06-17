@@ -23,7 +23,7 @@ def _to_msgpack(search_index: SearchIndex) -> dict[str, object]:
         },
     }
 
-def load_index(index_path: str) -> SearchIndex:
+def load_index(index_path: Path | str) -> SearchIndex:
     start = time.perf_counter()
     with Path(index_path).open("rb") as index_file:
         raw = msgpack.unpack(index_file, raw=False)

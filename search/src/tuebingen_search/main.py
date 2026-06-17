@@ -4,6 +4,7 @@ from .indexer import index
 from .search import search
 from .cli import build_parser
 from .load_pages import PageLoad
+from .batch import run_batch
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -21,3 +22,7 @@ def main() -> None:
                 f"    url:    {result.url}\n"
                 f"    snippet: {result.snippet}"
             )
+    elif args.command == "batch":
+        print("Run Batch Search...")
+        run_batch(args.index, args.batch, args.output, args.top_n)
+        print(f"Finished Batch Search with Result: {args.output}")
