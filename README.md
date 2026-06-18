@@ -14,9 +14,9 @@ This repo is a uv workspace with separate components, each with its own README:
 ## Quickstart
 
 ```bash
-uv sync                                              # install workspace deps
-uv run tuebingen-crawl                               # 1. crawl pages → data/
-uv run tuebingen-search index                        # 2. build index.bin
+uv sync                                                    # install workspace deps
+uv run tuebingen-crawl                                     # 1. crawl pages → data/
+uv run tuebingen-search index                              # 2. build index.bin
 uv run tuebingen-search search -q "tübingen attractions"   # 3. query
 ```
 

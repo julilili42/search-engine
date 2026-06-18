@@ -1,44 +1,4 @@
 [[sites]]
-url = "https://uni-tuebingen.de/en/"
-max_pages = 100
-request_delay = 0.5
-
-[[sites]]
 url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
-max_pages = 100
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.tuepedia.de/"
 max_pages = 1000
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.tuebingen-info.de/"
-max_pages = 1000
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.kreis-tuebingen.de/Startseite"
-max_pages = 100
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.tagblatt.de/"
-max_pages = 100
-request_delay = 0.5
-
-[[sites]]
-url = "https://kunsthalle-tuebingen.de/"
-max_pages = 50
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.stadtmuseum-tuebingen.de/"
-max_pages = 50
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.medizin.uni-tuebingen.de/"
-max_pages = 100
 request_delay = 0.5
