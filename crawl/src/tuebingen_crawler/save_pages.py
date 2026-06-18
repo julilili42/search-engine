@@ -6,9 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
+_PAGE_COLUMNS = """title, url, host, path, status_code, content_type,
+                   content_hash, fetched_at, indexed_at"""
+
 
 @dataclass(frozen=True)
 class PageRecord:
+    title: str
     url: str
     host: str
     path: Path
@@ -18,7 +22,8 @@ class PageRecord:
     fetched_at: str
     indexed_at: str | None
 
-# used to store informations (`PageRecord`) about crawled pages in sqlite database
+
+# used to store informations PageRecord about crawled pages in sqlite database
 class PageStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
@@ -45,6 +50,7 @@ class PageStore:
             """
             CREATE TABLE IF NOT EXISTS pages (
                 id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
                 url TEXT NOT NULL UNIQUE,
                 host TEXT NOT NULL,
                 path TEXT NOT NULL,
@@ -58,6 +64,7 @@ class PageStore:
             )
             """
         )
+        self._migrate_schema()
 
         self.con.execute(
             """
@@ -75,9 +82,24 @@ class PageStore:
 
         self.con.commit()
 
+    def _migrate_schema(self) -> None:
+        columns = {
+            row["name"]
+            for row in self.con.execute("PRAGMA table_info(pages)").fetchall()
+        }
+
+        if "title" not in columns:
+            self.con.execute(
+                """
+                ALTER TABLE pages
+                ADD COLUMN title TEXT NOT NULL DEFAULT ''
+                """
+            )
+
     def upsert_page(
         self,
         *,
+        title: str,
         url: str,
         host: str,
         path: str | Path,
@@ -93,6 +115,7 @@ class PageStore:
             self.con.execute(
                 """
                 INSERT INTO pages (
+                    title,
                     url,
                     host,
                     path,
@@ -104,8 +127,9 @@ class PageStore:
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
+                    title = excluded.title,
                     host = excluded.host,
                     path = excluded.path,
                     status_code = excluded.status_code,
@@ -115,6 +139,7 @@ class PageStore:
                     updated_at = excluded.updated_at
                 """,
                 (
+                    title,
                     url,
                     host,
                     str(path),
@@ -127,40 +152,10 @@ class PageStore:
                 ),
             )
 
-    def mark_indexed(self, url: str) -> None:
-        now = self._now()
-
-        with self.con:
-            self.con.execute(
-                """
-                UPDATE pages
-                SET indexed_at = ?, updated_at = ?
-                WHERE url = ?
-                """,
-                (now, now, url),
-            )
-
-    def get_page_by_url(self, url: str) -> PageRecord | None:
-        row = self.con.execute(
-            """
-            SELECT url, host, path, status_code, content_type,
-                   content_hash, fetched_at, indexed_at
-            FROM pages
-            WHERE url = ?
-            """,
-            (url,),
-        ).fetchone()
-
-        if row is None:
-            return None
-
-        return self._row_to_page(row)
-
     def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
-            """
-            SELECT url, host, path, status_code, content_type,
-                   content_hash, fetched_at, indexed_at
+            f"""
+            SELECT {_PAGE_COLUMNS}
             FROM pages
             WHERE content_type IS NULL OR content_type LIKE 'text/html%'
             ORDER BY id
@@ -173,6 +168,7 @@ class PageStore:
     @staticmethod
     def _row_to_page(row: sqlite3.Row) -> PageRecord:
         return PageRecord(
+            title=row["title"],
             url=row["url"],
             host=row["host"],
             path=Path(row["path"]),
