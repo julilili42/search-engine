@@ -125,10 +125,15 @@ def load_state(path: Path) -> tuple[CrawlState, bool]:
         data = json.loads(path.read_text(encoding="utf-8"))
         frontier = [list(entry) for entry in data.get("frontier", [])]
         heapq.heapify(frontier)
+        seen_texts = {
+            fingerprint
+            for fingerprint in data.get("seen_texts", [])
+            if isinstance(fingerprint, int)
+        }
         state = CrawlState(
             frontier=frontier,
             seen_urls=set(data.get("seen_urls", [])),
-            seen_texts=set(data.get("seen_texts", [])),
+            seen_texts=seen_texts,
             counter=data.get("counter", 0),
             statistics=Statistics(**data.get("statistics", {})),
         )

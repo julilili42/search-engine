@@ -38,7 +38,7 @@ def test_save_and_load_state_roundtrip(tmp_path):
     state = CrawlState(
         frontier=[[-5.0, 1, "https://host/", 0], [-3.0, 2, "https://host/a", 1]],
         seen_urls={"https://host/", "https://host/a"},
-        seen_texts={"hash-a", "hash-b"},
+        seen_texts={123, 456},
         counter=2,
         statistics=Statistics(fetched=1, discovered=2, failed=0, saved=1),
     )
@@ -87,6 +87,28 @@ def test_load_state_with_missing_keys_uses_defaults(tmp_path):
     assert state.seen_urls == set()
     assert state.seen_texts == set()
     assert state.statistics == Statistics()
+
+
+def test_load_state_ignores_legacy_string_seen_texts(tmp_path):
+    path = tmp_path / "crawl_state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "seen_texts": [
+                    "035d2aadefddc9601f048826a95b029ba24a540f9bf586eab68460e9ce53a15f",
+                    123,
+                    "9c89bce000af6e97696de173e0765fca34a7fbcc8cad5ff09a32ec409ddeab5e",
+                    456,
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    state, ok = load_state(path)
+
+    assert ok
+    assert state.seen_texts == {123, 456}
 
 
 def test_load_state_corrupt_json_raises(tmp_path):

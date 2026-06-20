@@ -47,7 +47,7 @@ class CrawlSite(BaseModel):
 class CrawlState:
     frontier: list[list[float, int, int]] = field(default_factory=list)
     seen_urls: set[str] = field(default_factory=set)
-    seen_texts: set[str] = field(default_factory=set)
+    seen_texts: set[int] = field(default_factory=set)
     counter: int = 0
     statistics: Statistics = field(default_factory=Statistics)
 

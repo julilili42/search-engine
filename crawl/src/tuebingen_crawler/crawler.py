@@ -10,23 +10,24 @@ from .extract import parse_page
 from .heuristic import evaluate_page, link_score, should_enqueue
 from .save_pages import PageStore
 from .frontier import push_frontier, pop_frontier
+from .dedup import simhash, is_near_duplicate
 import httpx
-import hashlib
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse
+
 
 logger = logging.getLogger(__name__)
 
 # seed links have highest possible priority
 SEED_SCORE = 1_000_000.0
 
-
+# crawls hostnames defined in seed.toml
 def crawl_hostname(config: Config, page_store: PageStore) -> None:
     headers = {"Accept": config.accept, "User-Agent": config.user_agent}
     # avoids crawling duplicate pages
     # page might have different urls but same content
     seen_urls: set[str] = set()
-    seen_texts: set[str] = set()
+    seen_texts: set[int] = set()
 
     for site in config.sites:
         with httpx.Client(timeout=site.request_timeout, headers=headers) as client:
@@ -51,7 +52,7 @@ def crawl_hostname(config: Config, page_store: PageStore) -> None:
 
             state.statistics.print()
 
-
+# crawls individual side
 def crawl_site(
     client: httpx.Client,
     site: CrawlSite,
@@ -61,7 +62,7 @@ def crawl_site(
     robot_parser: RobotFileParser,
     user_agent: str,
     seen_urls: set[str] | None = None,
-    seen_texts: set[str] | None = None
+    seen_texts: set[int] | None = None
 ) -> CrawlState:
     seen_urls = seen_urls if seen_urls is not None else set()
     seen_texts = seen_texts if seen_texts is not None else set()
@@ -74,7 +75,7 @@ def crawl_site(
 
     # crawling continues until the heap is empty or (optional) max_page is reached.
     while state.frontier:
-        if site.max_pages and site.max_pages >= 0 and state.statistics.saved >= site.max_pages:
+        if site.max_pages is not None and site.max_pages >= 0 and state.statistics.saved >= site.max_pages:
             break
 
         current_url, depth = pop_frontier(state)
@@ -114,13 +115,6 @@ def crawl_site(
         if not page.text.strip():
             continue
 
-        # avoids recrawling the same content
-        text_hash = hashlib.sha256(page.text.strip().encode("utf-8")).hexdigest()
-        if page.text and text_hash in seen_texts:
-            logger.info("Skipping already seen text: %s", current_url)
-            continue
-        seen_texts.add(text_hash)
-
         # calculate PageVerdict to rank importance of url in relationship to topic
         verdict = evaluate_page(current_url, page.title, page.text, page.lang)
 
@@ -135,6 +129,13 @@ def crawl_site(
             continue
 
         if verdict.keep:
+            # avoids recrawling the same content
+            fingerprint = simhash(page.text)
+            if page.text and is_near_duplicate(fingerprint, seen_texts):
+                logger.info("Skipping duplicate text: %s", current_url)
+                continue
+            seen_texts.add(fingerprint)
+            
             try:
                 hostname = normalize_host(urlparse(current_url).hostname)
                 path = save_html(hostname, save_dir, current_url, fetch_result.body)
@@ -216,7 +217,7 @@ def load_or_create_state(
     state_path: Path,
     canonical_start: str,
     seen_urls: set[str],
-    seen_texts: set[str],
+    seen_texts: set[int],
 ) -> CrawlState:
     state, loaded = load_state(state_path)
 
