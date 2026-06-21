@@ -25,6 +25,16 @@ def test_detect_language_uses_cached_nltk_stopwords(monkeypatch):
     assert detect_language(text) is Language.EN
 
 
+def test_detect_language_trusts_non_english_lang_attribute(monkeypatch):
+    def fail_load_stopwords():
+        raise AssertionError("stopwords should not decide when lang is declared")
+
+    monkeypatch.setattr(heuristic, "load_stopwords", fail_load_stopwords)
+
+    english_looking = " ".join(["a", "i", "o", "it", "do", "as"] * 20)
+    assert detect_language(english_looking, "cs") is Language.UNKNOWN
+
+
 def test_link_score_normalizes_parent_www_host():
     score = link_score(
         anchor="About",

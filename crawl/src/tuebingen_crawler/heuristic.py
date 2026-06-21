@@ -26,17 +26,16 @@ SEM_ADMIT = 0.7
 # relevance span granted to semantically admitted pages
 SEM_ADMIT_REL = 2.0
 
-
 TOKEN_RE = re.compile(r"[a-zäöüß]+", re.IGNORECASE)
 
 # SKIP
 # sites wich end in these suffixes
 RESOURCE_SUFFIXES = (
     ".jpg", ".jpeg", ".png", ".gif", ".svg", ".css", ".js",
-    ".pdf", ".zip", ".mp4", ".mp3", ".ico", ".woff", ".woff2",
+    ".pdf", ".zip", ".mp4", ".mp3", ".ico", ".woff", ".woff2", ".webp"
 )
 # overview sites 
-SKIP_PATH_WORDS = {"category", "appendix", "talk"}
+SKIP_PATH_WORDS = {"category", "appendix", "talk", "special:"}
 
 # TÜBINGEN
 # multiple variants
@@ -60,7 +59,6 @@ LINK_FEATURE_WEIGHTS: dict[str, float] = {
     "parent_relevant": 2.0,
     "internal_link": 1.0,
 }
-
 
 class Language(StrEnum):
     EN = "en"
@@ -140,11 +138,11 @@ def load_stopwords() -> tuple[set[str], set[str]]:
 
 # POST FETCH
 def detect_language(text: str, lang_attribute: str | None = None) -> Language:
-    tokens = _tokenize(text)
+    if lang_attribute:
+        return _language_from_attribute(lang_attribute)
 
+    tokens = _tokenize(text)
     if len(tokens) < MIN_TOKENS_FOR_LANG:
-        if lang_attribute:
-            return _language_from_attribute(lang_attribute)
         return Language.UNKNOWN
 
     german_stopwords, english_stopwords = load_stopwords()
@@ -156,9 +154,6 @@ def detect_language(text: str, lang_attribute: str | None = None) -> Language:
     if de >= 5 and de >= en:
         return Language.DE
 
-    # use <html lang="..."> as tiebreaker
-    if lang_attribute:
-        return _language_from_attribute(lang_attribute)
     return Language.UNKNOWN
 
 def relevance_score(url: str, title: str, text: str) -> float:
