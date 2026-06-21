@@ -1,8 +1,10 @@
 # Crawl
 
 Link crawler that discovers English, Tübingen-related web pages and stores them
-locally. It respects `robots.txt` and is resumable: re-running picks up where a
-previous run stopped.
+locally. Each page is scored for topical relevance, lexical Tübingen cues refined
+by a DistilBERT semantic check, and near-duplicates are dropped via SimHash. It
+respects `robots.txt` and is resumable: re-running picks up where a previous run
+stopped.
 
 ## Setup
 
@@ -19,7 +21,8 @@ uv run tuebingen-crawl
 ```
 
 - Seeds are configured in `crawl/seeds.toml` — one `[[sites]]` entry per seed
-  with `url`, `max_pages`, and `request_delay`.
+  with `url`, `request_delay`, and an optional `max_pages` (omit to crawl until
+  the frontier is exhausted).
 - HTML is saved under `data/<host>/`; page metadata is recorded in
   `data/pages.sqlite`.
 - Crawl state is persisted per host, so an interrupted crawl resumes on the next
