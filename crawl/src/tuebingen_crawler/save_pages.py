@@ -145,6 +145,11 @@ class PageStore:
                 ),
             )
 
+    # saved-page count per host
+    def host_counts(self) -> dict[str, int]:
+        rows = self.con.execute("SELECT host, COUNT(*) FROM pages GROUP BY host")
+        return {row[0]: row[1] for row in rows}
+
     def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
             f"""

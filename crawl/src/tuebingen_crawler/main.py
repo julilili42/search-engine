@@ -10,6 +10,9 @@ from .paths import DEFAULT_DATA_DIR, DEFAULT_DB_PATH, DEFAULT_SEED_PATH
 
 logger = logging.getLogger(__name__)
 
+# cap saved pages per host
+MAX_PAGES_PER_HOST = 60
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -19,11 +22,14 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-
     DEFAULT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     sites = load_seed_toml(DEFAULT_SEED_PATH)
-    config = Config(sites=sites, save_dir=DEFAULT_DATA_DIR)
+    config = Config(
+        sites=sites,
+        save_dir=DEFAULT_DATA_DIR,
+        max_pages_per_host=MAX_PAGES_PER_HOST,
+    )
     
     with PageStore(DEFAULT_DB_PATH) as page_store:
         try:

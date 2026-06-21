@@ -24,7 +24,7 @@ def fetch_page(
               retries=site.retries,
           )
       except Exception:
-          logger.error("%-7s | %-3s | %-24s | %s", "FAILED", "-", "-", url)
+          logger.error("%-7s | %-3s | %-5.1s | %s", "FAILED", "-", "-", url)
           state.statistics.failed += 1
           return None
 

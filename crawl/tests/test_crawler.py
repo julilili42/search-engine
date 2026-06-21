@@ -4,8 +4,8 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import pytest
 
-from tuebingen_crawler.crawler import crawl_site
-from tuebingen_crawler.models import CrawlSite
+from tuebingen_crawler.crawler import crawl_site, evaluate_links
+from tuebingen_crawler.models import CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import PageStore
 
 HTML_HEADERS = {"Content-Type": "text/html; charset=utf-8"}
@@ -72,7 +72,7 @@ def allow_all_robots() -> RobotFileParser:
 def make_site(**overrides) -> CrawlSite:
     defaults = dict(
         url="https://host/",
-        max_pages=100,
+        max_pages_per_seed=100,
         request_timeout=1.0,
         retry_delay=0.0,
         request_delay=0.0,
@@ -82,7 +82,15 @@ def make_site(**overrides) -> CrawlSite:
     return CrawlSite(**defaults)
 
 
-def run_crawl(client, tmp_path, page_store, seen_urls=None, **site_overrides):
+def run_crawl(
+    client,
+    tmp_path,
+    page_store,
+    seen_urls=None,
+    host_counts=None,
+    max_pages_per_host=None,
+    **site_overrides,
+):
     return crawl_site(
         client=client,
         site=make_site(**site_overrides),
@@ -92,6 +100,8 @@ def run_crawl(client, tmp_path, page_store, seen_urls=None, **site_overrides):
         robot_parser=allow_all_robots(),
         user_agent="TestCrawler/1.0",
         seen_urls=seen_urls,
+        host_counts=host_counts,
+        max_pages_per_host=max_pages_per_host,
     )
 
 
@@ -131,11 +141,70 @@ def test_crawl_site_uses_normalized_host_for_storage(tmp_path, page_store):
     assert all(Path(page.path).parent == tmp_path / "host" for page in pages)
 
 
-def test_crawl_site_respects_max_pages(client, tmp_path, page_store, requested_paths):
-    run_crawl(client, tmp_path, page_store, max_pages=2)
+def test_crawl_site_respects_max_pages_per_seed(client, tmp_path, page_store, requested_paths):
+    run_crawl(client, tmp_path, page_store, max_pages_per_seed=2)
 
     assert len(stored_urls(page_store)) == 2
     assert len(requested_paths) == 2
+
+
+def test_crawl_site_skips_fetching_when_host_capped(client, tmp_path, page_store, requested_paths):
+    host_counts = {"host": 1}
+    state = run_crawl(
+        client, tmp_path, page_store, host_counts=host_counts, max_pages_per_host=1
+    )
+
+    assert stored_urls(page_store) == []
+    assert state.statistics.saved == 0
+    assert host_counts["host"] == 1
+    assert requested_paths == []
+
+
+def test_crawl_site_cap_counts_saved_pages_per_host(client, tmp_path, page_store):
+    host_counts: dict[str, int] = {}
+    run_crawl(
+        client, tmp_path, page_store, host_counts=host_counts, max_pages_per_host=2
+    )
+
+    assert len(stored_urls(page_store)) == 2
+    assert host_counts == {"host": 2}
+    assert "https://host/c" not in stored_urls(page_store)
+
+
+def test_evaluate_links_skips_enqueue_for_capped_host():
+    state = CrawlState()
+    host_counts = {"host": 5}
+    evaluate_links(
+        state=state,
+        links=[("/a", "Tübingen")],
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts=host_counts,
+        max_pages_per_host=5,
+    )
+
+    assert state.frontier == []
+    assert "https://host/a" in state.seen_urls
+
+
+def test_evaluate_links_enqueues_below_cap():
+    state = CrawlState()
+    host_counts = {"host": 1}
+    evaluate_links(
+        state=state,
+        links=[("/a", "Tübingen")],
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts=host_counts,
+        max_pages_per_host=5,
+    )
+
+    assert len(state.frontier) == 1
+    assert "https://host/a" in state.seen_urls
 
 
 def test_crawl_site_updates_statistics(client, tmp_path, page_store):

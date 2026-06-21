@@ -21,8 +21,8 @@ uv run tuebingen-crawl
 ```
 
 - Seeds are configured in `crawl/seeds.toml` — one `[[sites]]` entry per seed
-  with `url`, `request_delay`, and an optional `max_pages` (omit to crawl until
-  the frontier is exhausted).
+  with `url`, `request_delay`, and an optional `max_pages_per_seed` (omit to
+  crawl until the frontier is exhausted).
 - HTML is saved under `data/<host>/`; page metadata is recorded in
   `data/pages.sqlite`.
 - Crawl state is persisted per host, so an interrupted crawl resumes on the next

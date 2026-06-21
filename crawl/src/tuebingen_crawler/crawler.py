@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # seed links have highest possible priority
 SEED_SCORE = 1_000_000.0
 
+
+def _host_at_cap(host_counts: dict[str, int], max_pages_per_host: int | None, host: str) -> bool:
+    return max_pages_per_host is not None and host_counts.get(host, 0) >= max_pages_per_host
+
 # crawls hostnames defined in seed.toml
 def crawl_hostname(config: Config, page_store: PageStore) -> None:
     headers = {"Accept": config.accept, "User-Agent": config.user_agent}
@@ -27,6 +31,8 @@ def crawl_hostname(config: Config, page_store: PageStore) -> None:
     # page might have different urls but same content
     seen_urls: set[str] = set()
     seen_texts: set[int] = set()
+    # saved pages per host shared across seeds and resumed from the db
+    host_counts: dict[str, int] = page_store.host_counts()
 
     for site in config.sites:
         with httpx.Client(timeout=site.request_timeout, headers=headers) as client:
@@ -46,7 +52,9 @@ def crawl_hostname(config: Config, page_store: PageStore) -> None:
                 robot_parser,
                 config.user_agent,
                 seen_urls,
-                seen_texts
+                seen_texts,
+                host_counts,
+                config.max_pages_per_host,
             )
 
             state.statistics.print()
@@ -61,10 +69,13 @@ def crawl_site(
     robot_parser: RobotFileParser,
     user_agent: str,
     seen_urls: set[str] | None = None,
-    seen_texts: set[int] | None = None
+    seen_texts: set[int] | None = None,
+    host_counts: dict[str, int] | None = None,
+    max_pages_per_host: int | None = None,
 ) -> CrawlState:
     seen_urls = seen_urls if seen_urls is not None else set()
     seen_texts = seen_texts if seen_texts is not None else set()
+    host_counts = host_counts if host_counts is not None else {}
 
     canonical_start = validate_start_url(site.url)
     hostname = normalize_host(urlparse(canonical_start).hostname)
@@ -74,11 +85,15 @@ def crawl_site(
 
     # crawling continues until the heap is empty or (optional) max_page is reached.
     while state.frontier:
-        if site.max_pages is not None and site.max_pages >= 0 and state.statistics.saved >= site.max_pages:
+        if site.max_pages_per_seed is not None and site.max_pages_per_seed >= 0 and state.statistics.saved >= site.max_pages_per_seed:
             break
 
         current_url, depth = pop_frontier(state)
         state.statistics.discovered += 1
+
+        hostname = normalize_host(urlparse(current_url).hostname)
+        if _host_at_cap(host_counts, max_pages_per_host, hostname):
+            continue
 
         if not robot_parser.can_fetch(user_agent, current_url):
             logger.info("Skipping disallowed URL: %s", current_url)
@@ -96,7 +111,7 @@ def crawl_site(
             if bad_status:
                 state.statistics.failed += 1
             logger.info(
-                "%-7s | %3d | %-24s | %s",
+                "%-7s | %3d | %-10s | %s",
                 "FAILED" if bad_status else "SKIPPED",
                 status,
                 fetch_result.content_type,
@@ -136,7 +151,6 @@ def crawl_site(
             seen_texts.add(fingerprint)
             
             try:
-                hostname = normalize_host(urlparse(current_url).hostname)
                 path = save_html(hostname, save_dir, current_url, fetch_result.body)
             except Exception as exc:
                 logger.error("Failed to save html %s with error %s", current_url, exc)
@@ -153,6 +167,7 @@ def crawl_site(
                 content_type=fetch_result.content_type,
             )
             state.statistics.saved += 1
+            host_counts[hostname] = host_counts.get(hostname, 0) + 1
 
             # page is kept therefore eval. of all links on current url
             # add relevant urls to the frontier
@@ -163,6 +178,8 @@ def crawl_site(
                 depth=depth,
                 parent_relevance=verdict.relevance,
                 parent_host=hostname,
+                host_counts=host_counts,
+                max_pages_per_host=max_pages_per_host,
             )
 
             logger.info(
@@ -196,6 +213,8 @@ def evaluate_links(
     depth: int,
     parent_relevance: float,
     parent_host: str,
+    host_counts: dict[str, int],
+    max_pages_per_host: int | None,
 ) -> None:
     child_depth = depth + 1
 
@@ -205,7 +224,10 @@ def evaluate_links(
             continue
 
         score = link_score(anchor, final_url, parent_relevance, parent_host)
-        if should_enqueue(score, child_depth):
+        host = normalize_host(urlparse(final_url).hostname)
+        if should_enqueue(score, child_depth) and not _host_at_cap(
+            host_counts, max_pages_per_host, host
+        ):
             push_frontier(state, score, final_url, child_depth)
 
         state.seen_urls.add(final_url)
