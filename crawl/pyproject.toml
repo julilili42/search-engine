@@ -9,6 +9,8 @@ dependencies = [
     "selectolax>=0.4.10",
     "pydantic>=2.13.4",
     "nltk>=3.9.4",
+    "torch>=2.12.1",
+    "transformers>=4.46.0",
 ]
 
 [project.scripts]

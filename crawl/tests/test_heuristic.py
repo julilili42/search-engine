@@ -1,5 +1,5 @@
 import tuebingen_crawler.heuristic as heuristic
-from tuebingen_crawler.heuristic import Language, detect_language, link_score
+from tuebingen_crawler.heuristic import Language, detect_language, link_score, evaluate_page
 
 
 def test_detect_language_uses_lang_attribute_without_loading_stopwords(monkeypatch):
@@ -138,3 +138,53 @@ def test_link_score_does_not_chase_republic_url():
     )
     # only the internal_link feature may apply, never the tuebingen features
     assert score <= heuristic.LINK_FEATURE_WEIGHTS["internal_link"]
+
+
+# --- semantic modulation of the page relevance ------------------------------
+
+_TUEBINGEN_URL = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
+_TUEBINGEN_BODY = (
+    "Tübingen is a university town on the river Neckar. The old town of "
+    "Tübingen and the university of Tübingen attract many visitors. "
+) * 5
+
+
+def test_evaluate_page_skips_model_when_lexically_irrelevant(monkeypatch):
+    def fail_similarity(title, text):
+        raise AssertionError("model must not run on lexically irrelevant pages")
+
+    monkeypatch.setattr(heuristic, "topic_similarity", fail_similarity)
+
+    verdict = evaluate_page(
+        "https://example.com/czech", "Czech Republic", "A country in Europe. " * 10
+    )
+    assert verdict.relevance == 0.0
+
+
+def test_evaluate_page_high_similarity_keeps_lexical_score(monkeypatch):
+    monkeypatch.setattr(heuristic, "topic_similarity", lambda title, text: 1.0)
+
+    lexical = heuristic.relevance_score(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY)
+    verdict = evaluate_page(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY, "en")
+
+    assert verdict.relevance == lexical
+
+
+def test_evaluate_page_low_similarity_demotes_to_floor(monkeypatch):
+    monkeypatch.setattr(heuristic, "topic_similarity", lambda title, text: 0.0)
+
+    lexical = heuristic.relevance_score(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY)
+    verdict = evaluate_page(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY, "en")
+
+    assert verdict.relevance == lexical * heuristic.LEXICAL_FLOOR
+
+
+def test_evaluate_page_model_can_demote_borderline_page_below_threshold(monkeypatch):
+    # a url-only match (lexical == _TERM_IN_URL_SCORE) that the model finds
+    # off-topic should drop below the relevance threshold.
+    monkeypatch.setattr(heuristic, "topic_similarity", lambda title, text: 0.0)
+
+    body = "An unrelated article about something else entirely. " * 10
+    verdict = evaluate_page("https://www.tuebingen.de/hotel-booking", "Booking", body, "en")
+
+    assert 0.0 < verdict.relevance < heuristic.REL_THRESHOLD

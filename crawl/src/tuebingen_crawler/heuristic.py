@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import nltk
+from .semantic import topic_similarity
 from .urls import normalize_host
 from dataclasses import dataclass
 from enum import StrEnum
@@ -18,6 +19,8 @@ REL_THRESHOLD = 3.0
 LINK_THRESHOLD = 4.0
 # link is ignored
 MAX_DEPTH = 5
+# semantic model may pull a lexically-relevant page down, strong lexical should not be dropped
+LEXICAL_FLOOR = 0.5
 
 
 TOKEN_RE = re.compile(r"[a-zäöüß]+", re.IGNORECASE)
@@ -177,7 +180,16 @@ def evaluate_page(
     lang_attribute: str | None = None,
 ) -> PageVerdict:
     lang = detect_language(text, lang_attribute)
-    rel = relevance_score(url, title, text)
+    lexical = relevance_score(url, title, text)
+
+    # lexical score is cheap
+    # use model only if threshold is passed
+    if lexical > 0.0:
+        sim = topic_similarity(title, text)
+        rel = lexical * (LEXICAL_FLOOR + (1.0 - LEXICAL_FLOOR) * sim)
+    else:
+        rel = 0.0
+
     return PageVerdict(
         language=lang,
         relevance=rel,
