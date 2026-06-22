@@ -1,8 +1,41 @@
 
 from __future__ import annotations
 from dataclasses import field, dataclass
+from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
+
+
+class Language(StrEnum):
+    EN = "en"
+    DE = "de"
+    UNKNOWN = "unknown"
+
+# score at which a page is relevant
+REL_THRESHOLD = 3.0
+
+@dataclass(frozen=True)
+class PageVerdict:
+    language: Language
+    relevance: float
+
+    @property
+    def keep(self) -> bool:
+        return self.is_english and self.is_relevant
+
+    @property
+    def is_english(self) -> bool:
+        return self.language is Language.EN
+
+    @property
+    def is_relevant(self) -> bool:
+        return self.relevance >= REL_THRESHOLD
+
+@dataclass(frozen=True)
+class LinkVerdict:
+    url: str
+    score: float
+    enqueue: bool
 
 @dataclass
 class FetchResult:
@@ -52,4 +85,3 @@ class CrawlState:
     seen_texts: set[int] = field(default_factory=set)
     counter: int = 0
     statistics: Statistics = field(default_factory=Statistics)
-

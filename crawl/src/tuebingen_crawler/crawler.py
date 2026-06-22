@@ -10,17 +10,16 @@ from .storage import load_state, generate_state_path, load_robots, save_state, m
 from .urls import validate_start_url, canonical_url, normalize_host
 from .fetcher import fetch_page
 from .extract import parse_page
-from .heuristic import evaluate_page, link_score, should_enqueue
+from .page_classifier import classify_page
+from .link_classifier import classify_link
 from .save_pages import PageStore
 from .frontier import push_frontier, pop_frontier
 from .dedup import simhash, is_near_duplicate
 
 logger = logging.getLogger(__name__)
 
-# seed links have highest possible priority
-SEED_SCORE = 1_000_000.0
-
-
+# caps the number of sites per hostname
+# goal is to increase entropy by forcing a limit on the crawler
 def _host_at_cap(host_counts: dict[str, int], max_pages_per_host: int | None, host: str) -> bool:
     return max_pages_per_host is not None and host_counts.get(host, 0) >= max_pages_per_host
 
@@ -129,8 +128,8 @@ def crawl_site(
         if not page.text.strip():
             continue
 
-        # calculate PageVerdict to rank importance of url in relationship to topic
-        verdict = evaluate_page(current_url, page.title, page.text, page.lang)
+        # classify the fetched page before deciding whether it belongs in the index
+        verdict = classify_page(current_url, page.title, page.text, page.lang)
 
         if not verdict.is_relevant:
             logger.info(
@@ -223,12 +222,12 @@ def evaluate_links(
         if not is_canonical or final_url in state.seen_urls:
             continue
 
-        score = link_score(anchor, final_url, parent_relevance, parent_host)
+        verdict = classify_link(anchor, final_url, parent_relevance, parent_host, child_depth)
         host = normalize_host(urlparse(final_url).hostname)
-        if should_enqueue(score, child_depth) and not _host_at_cap(
+        if verdict.enqueue and not _host_at_cap(
             host_counts, max_pages_per_host, host
         ):
-            push_frontier(state, score, final_url, child_depth)
+            push_frontier(state, verdict.score, final_url, child_depth)
 
         state.seen_urls.add(final_url)
 
@@ -255,5 +254,8 @@ def load_or_create_state(
         return state
 
     state.seen_urls.add(canonical_start)
+
+    # seed links have highest possible priority
+    SEED_SCORE = 1_000_000.0
     push_frontier(state, SEED_SCORE, canonical_start, depth=0)
     return state
