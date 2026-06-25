@@ -33,6 +33,23 @@ def test_fetch_bytes_returns_html_body(sleep_calls):
     assert result.content_type == "text/html"
 
 
+def test_fetch_bytes_follows_permanent_redirect(sleep_calls):
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.path)
+        if request.url.path == "/old":
+            return httpx.Response(301, headers={"Location": "/new"})
+        return httpx.Response(200, headers=HTML_HEADERS, content=b"<html>new</html>")
+
+    with make_client(handler) as client:
+        result = fetch_bytes(client, "https://host/old", retry_delay=1.0, retries=3)
+
+    assert requests == ["/old", "/new"]
+    assert result.body == b"<html>new</html>"
+    assert result.status_code == 200
+
+
 def test_fetch_bytes_returns_empty_result_on_bad_status(sleep_calls):
     requests = []
 
@@ -104,6 +121,23 @@ def test_fetch_bytes_caps_backoff_delay_at_30s_and_returns_empty_result(sleep_ca
     assert result.body is None
     assert result.status_code == 429
     assert sleep_calls == [20.0, 30.0]
+
+
+def test_fetch_bytes_retries_on_server_error(sleep_calls):
+    attempts = []
+
+    def handler(request):
+        attempts.append(request)
+        if len(attempts) == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, headers=HTML_HEADERS, content=b"<html>ok</html>")
+
+    with make_client(handler) as client:
+        result = fetch_bytes(client, "https://host/", retry_delay=1.0, retries=3)
+
+    assert result.body == b"<html>ok</html>"
+    assert len(attempts) == 2
+    assert sleep_calls == [1.0]
 
 
 def test_fetch_bytes_retries_on_request_error(sleep_calls):
