@@ -70,27 +70,29 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
     term_frequency_index: dict[Document, TermFrequency] = {}
     term_positions: dict[Document, TermPosition] = {}
 
-
     logger.info("Iterating over pages...")
     records = pages_db.iter_html_pages()
     previous_host = ""
     for record in records:
         file_path = record.path
+        if file_path is None:
+            logger.warning("Skipped page without file path: %s", record.url)
+            continue
 
         if not file_path.exists():
             logger.warning("Skipped missing file: %s", file_path)
             continue
 
         if not is_html_file(file_path):
-                logger.warning("Skipped non-html file: %s", file_path)
-                continue
-        
+            logger.warning("Skipped non-html file: %s", file_path)
+            continue
+
         if record.host != previous_host:
             logger.info(f"Indexing {record.host}")
             previous_host = record.host
 
         logger.debug("Indexing %s", file_path)
-        
+
         start_extraction = time.perf_counter()
         text = extract_text_from_html(file_path)
         extraction_time += (time.perf_counter() - start_extraction)
@@ -116,6 +118,6 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
     search_index = build_search_index(term_frequency_index, term_positions)
 
     logger.info("Saving %s", index_path)
-    save_index(index_path, search_index)  
+    save_index(index_path, search_index)
     logger.info(f"Index computation took {elapsed(start)}")
     logger.info(f"Extraction time took {extraction_time:.6f} s")

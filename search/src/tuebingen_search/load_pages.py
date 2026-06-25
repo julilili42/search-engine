@@ -33,7 +33,7 @@ class PageRecord:
     title: str
     url: str
     host: str
-    path: Path
+    path: Path | None
     status_code: int | None
     content_type: str | None
     crawl_depth: int | None
@@ -42,6 +42,7 @@ class PageRecord:
     token_count: int | None
     fetched_at: str
     indexed_at: str | None
+    exclusion_reason: str | None = None
 
 
 class PageLoad:
@@ -52,11 +53,12 @@ class PageLoad:
 
     @staticmethod
     def _row_to_page(row: sqlite3.Row) -> PageRecord:
+        path = row["path"]
         return PageRecord(
             title=row["title"],
             url=row["url"],
             host=row["host"],
-            path=Path(row["path"]),
+            path=Path(path) if path is not None else None,
             status_code=row["status_code"],
             content_type=row["content_type"],
             crawl_depth=row["crawl_depth"],
@@ -66,7 +68,7 @@ class PageLoad:
             fetched_at=row["fetched_at"],
             indexed_at=row["indexed_at"],
         )
-    
+
     def get_page_by_file_path(self, path: Path) -> PageRecord | None:
         row = self.con.execute(
             f"""
@@ -81,7 +83,6 @@ class PageLoad:
             return None
 
         return self._row_to_page(row)
-    
 
     def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
