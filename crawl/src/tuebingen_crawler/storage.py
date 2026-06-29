@@ -7,9 +7,9 @@ import logging
 import os
 from dataclasses import asdict
 from pathlib import Path
-from .models import CrawlState, Statistics, CrawlSite
+from .models import CrawlState, FrontierEntry, Statistics, CrawlSite
 from .urls import normalize_host, url_slug
-from .frontier import push_frontier
+from .frontier import count_frontier_hosts, push_frontier
 import hashlib
 import tomllib
 import httpx
@@ -125,7 +125,7 @@ def load_state(path: Path) -> tuple[CrawlState, bool]:
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        frontier = [list(entry) for entry in data.get("frontier", [])]
+        frontier = [_frontier_entry(entry) for entry in data.get("frontier", [])]
         heapq.heapify(frontier)
         seen_texts = {
             fingerprint
@@ -136,6 +136,8 @@ def load_state(path: Path) -> tuple[CrawlState, bool]:
             frontier=frontier,
             seen_urls=set(data.get("seen_urls", [])),
             seen_texts=seen_texts,
+            recent_pop_hosts=list(data.get("recent_pop_hosts", [])),
+            queued_urls_by_host=count_frontier_hosts(frontier),
             counter=data.get("counter", 0),
             statistics=Statistics(**data.get("statistics", {})),
         )
@@ -144,6 +146,27 @@ def load_state(path: Path) -> tuple[CrawlState, bool]:
     except Exception as exc:
         logger.error("Failed to load intermediate state %s.", exc)
         raise
+
+
+def _frontier_entry(entry: object) -> FrontierEntry:
+    if isinstance(entry, dict):
+        return FrontierEntry(
+            heap_priority=float(entry["heap_priority"]),
+            sequence=int(entry["sequence"]),
+            url=str(entry["url"]),
+            depth=int(entry["depth"]),
+        )
+
+    if isinstance(entry, (list, tuple)) and len(entry) == 4:
+        heap_priority, sequence, url, depth = entry
+        return FrontierEntry(
+            heap_priority=float(heap_priority),
+            sequence=int(sequence),
+            url=str(url),
+            depth=int(depth),
+        )
+
+    raise ValueError(f"Invalid frontier entry: {entry!r}")
 
 
 # load intermediate state or start a new one

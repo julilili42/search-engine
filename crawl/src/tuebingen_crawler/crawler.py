@@ -367,7 +367,13 @@ def evaluate_links(
         if verdict.enqueue and not _host_at_cap(
             host_counts, max_pages_per_host, host
         ):
-            push_frontier(state, verdict.score, final_url, child_depth)
+            push_frontier(
+                state,
+                verdict.score,
+                final_url,
+                child_depth,
+                saved_urls_by_host=host_counts,
+            )
             # only mark URLs we actually enqueued as seen
             state.seen_urls.add(final_url)
 

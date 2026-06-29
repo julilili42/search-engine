@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
@@ -6,6 +7,7 @@ import pytest
 
 import tuebingen_crawler.page_classifier as page_classifier
 from tuebingen_crawler.crawler import CrawlRun, evaluate_links
+from tuebingen_crawler.link_classifier import classify_link
 from tuebingen_crawler.models import CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import PageStore
 
@@ -225,6 +227,26 @@ def test_evaluate_links_enqueues_below_cap():
 
     assert len(state.frontier) == 1
     assert "https://host/a" in state.seen_urls
+
+
+def test_evaluate_links_passes_saved_host_counts_to_frontier():
+    state = CrawlState()
+    host_counts = {"host": 3}
+
+    evaluate_links(
+        state=state,
+        links=[("/a", "Tübingen")],
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts=host_counts,
+        max_pages_per_host=5,
+    )
+
+    verdict = classify_link("Tübingen", "https://host/a", 5.0, "host", depth=1)
+    expected_score = verdict.score - 0.7 * 1 - 0.9 * math.log1p(3)
+    assert state.frontier[0].heap_priority == pytest.approx(-expected_score)
 
 
 def test_crawl_run_updates_statistics(client, tmp_path, page_store):

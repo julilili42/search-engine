@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tuebingen_crawler.models import CrawlState, Statistics
+from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
 from tuebingen_crawler.storage import (
     generate_state_path,
     load_or_create_state,
@@ -50,9 +50,13 @@ def test_save_html_writes_file_under_normalized_hostname(tmp_path):
 def test_save_and_load_state_roundtrip(tmp_path):
     path = tmp_path / "state" / "crawl_state.json"
     state = CrawlState(
-        frontier=[[-5.0, 1, "https://host/", 0], [-3.0, 2, "https://host/a", 1]],
+        frontier=[
+            FrontierEntry(-5.0, 1, "https://host/", 0),
+            FrontierEntry(-3.0, 2, "https://host/a", 1),
+        ],
         seen_urls={"https://host/", "https://host/a"},
         seen_texts={123, 456},
+        queued_urls_by_host={"host": 2},
         counter=2,
         statistics=Statistics(fetched=1, discovered=2, failed=0, saved=1),
     )
@@ -73,12 +77,19 @@ def test_save_state_leaves_no_tmp_file(tmp_path):
 
 def test_save_state_overwrites_existing_file(tmp_path):
     path = tmp_path / "crawl_state.json"
-    save_state(path, CrawlState(frontier=[[-1.0, 1, "https://host/old", 0]], counter=1))
-    save_state(path, CrawlState(frontier=[[-2.0, 1, "https://host/new", 0]], counter=1))
+    save_state(
+        path,
+        CrawlState(frontier=[FrontierEntry(-1.0, 1, "https://host/old", 0)], counter=1),
+    )
+    save_state(
+        path,
+        CrawlState(frontier=[FrontierEntry(-2.0, 1, "https://host/new", 0)], counter=1),
+    )
 
     loaded, ok = load_state(path)
     assert ok
-    assert loaded.frontier == [[-2.0, 1, "https://host/new", 0]]
+    assert loaded.frontier == [FrontierEntry(-2.0, 1, "https://host/new", 0)]
+    assert loaded.queued_urls_by_host == {"host": 1}
     assert loaded.counter == 1
 
 
@@ -96,7 +107,8 @@ def test_load_state_with_missing_keys_uses_defaults(tmp_path):
 
     state, ok = load_state(path)
     assert ok
-    assert state.frontier == [[-1.0, 1, "https://host/", 0]]
+    assert state.frontier == [FrontierEntry(-1.0, 1, "https://host/", 0)]
+    assert state.queued_urls_by_host == {"host": 1}
     assert state.counter == 0
     assert state.seen_urls == set()
     assert state.seen_texts == set()
@@ -147,7 +159,7 @@ def test_load_or_create_state_initializes_new_state_with_seed(tmp_path):
     assert state.seen_urls is seen_urls
     assert state.seen_texts is seen_texts
     assert state.seen_urls == {"https://host/"}
-    assert state.frontier == [[-1_000_000.0, 1, "https://host/", 0]]
+    assert state.frontier == [FrontierEntry(-1_000_000.0, 1, "https://host/", 0)]
     assert state.counter == 1
 
 
@@ -156,7 +168,7 @@ def test_load_or_create_state_uses_shared_seen_sets_for_loaded_state(tmp_path):
     save_state(
         path,
         CrawlState(
-            frontier=[[-1.0, 1, "https://host/a", 1]],
+            frontier=[FrontierEntry(-1.0, 1, "https://host/a", 1)],
             seen_urls={"https://host/a"},
             seen_texts={123},
         ),
@@ -170,4 +182,5 @@ def test_load_or_create_state_uses_shared_seen_sets_for_loaded_state(tmp_path):
     assert state.seen_texts is seen_texts
     assert state.seen_urls == {"https://other/", "https://host/a"}
     assert state.seen_texts == {123, 456}
-    assert state.frontier == [[-1.0, 1, "https://host/a", 1]]
+    assert state.frontier == [FrontierEntry(-1.0, 1, "https://host/a", 1)]
+    assert state.queued_urls_by_host == {"host": 1}

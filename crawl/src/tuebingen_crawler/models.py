@@ -55,10 +55,21 @@ class CrawlSite(BaseModel):
     request_delay: float = 0.01
     retries: int = Field(default=2, ge=1)
 
+@dataclass(order=True)
+class FrontierEntry:
+    heap_priority: float
+    sequence: int
+    url: str = field(compare=False)
+    depth: int = field(compare=False)
+
 @dataclass
 class CrawlState:
-    frontier: list[list[float, int, int]] = field(default_factory=list)
+    frontier: list[FrontierEntry] = field(default_factory=list)
     seen_urls: set[str] = field(default_factory=set)
     seen_texts: set[int] = field(default_factory=set)
+    # limits amount of same host pops
+    recent_pop_hosts: list[str] = field(default_factory=list)
+    # limits amount of same host pushes
+    queued_urls_by_host: dict[str, int] = field(default_factory=dict)
     counter: int = 0
     statistics: Statistics = field(default_factory=Statistics)
