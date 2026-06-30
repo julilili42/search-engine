@@ -1,3 +1,4 @@
+from tuebingen_crawler.models import Language
 from tuebingen_crawler.extract import parse_page
 
 
@@ -19,7 +20,7 @@ def test_parse_page_extracts_metadata_text_and_links():
         """
     )
 
-    assert page.lang == "en"
+    assert page.language is Language.EN
     assert page.title == "Tuebingen page"
     assert page.description == "A city page"
     assert page.h1 == "Welcome to Tuebingen"
@@ -41,3 +42,10 @@ def test_parse_page_falls_back_to_open_graph_description():
     )
 
     assert page.description == "OpenGraph summary"
+    assert page.language is Language.UNKNOWN
+
+
+def test_parse_page_normalizes_declared_german_language():
+    page = parse_page(b"<html lang='de-DE'><body>Hallo</body></html>")
+
+    assert page.language is Language.DE

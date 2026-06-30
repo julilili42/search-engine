@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 from selectolax.lexbor import LexborHTMLParser
 
+from .models import Language
+
 
 @dataclass(frozen=True)
 class ExtractConfig:
@@ -20,7 +22,7 @@ EXTRACT_CONFIG = ExtractConfig()
 @dataclass
 class ParsedPage:
     title: str
-    lang: str | None
+    language: Language
     description: str
     h1: str
     text: str
@@ -31,9 +33,16 @@ def _normalize_text(text: str | None) -> str:
     return " ".join((text or "").split())
 
 
-def _extract_lang(tree: LexborHTMLParser) -> str | None:
+def _extract_language(tree: LexborHTMLParser) -> Language:
     html_node = tree.css_first("html")
-    return html_node.attributes.get("lang") if html_node is not None else None
+    if html_node is None:
+        return Language.UNKNOWN
+    lang = (html_node.attributes.get("lang") or "").strip().lower()
+    if lang.startswith("en"):
+        return Language.EN
+    if lang.startswith("de"):
+        return Language.DE
+    return Language.UNKNOWN
 
 
 def _extract_title(tree: LexborHTMLParser) -> str:
@@ -83,7 +92,7 @@ def parse_page(body: bytes) -> ParsedPage:
 
     return ParsedPage(
         title=_extract_title(tree),
-        lang=_extract_lang(tree),
+        language=_extract_language(tree),
         description=_extract_description(tree),
         h1=_extract_h1(tree),
         text=_extract_text(tree),

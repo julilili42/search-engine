@@ -5,11 +5,11 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import pytest
 
-import tuebingen_crawler.page_classifier as page_classifier
 from tuebingen_crawler.crawler import CrawlRun, evaluate_links
 from tuebingen_crawler.link_classifier import classify_link
 from tuebingen_crawler.models import CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import LinkStore, PageStore
+from verdict_ml.base import VerdictPrediction
 
 HTML_HEADERS = {"Content-Type": "text/html; charset=utf-8"}
 
@@ -36,6 +36,15 @@ PAGES = {
     "/b": page("leaf b"),
     "/c": page("leaf c"),
 }
+
+
+class FakePagePredictor:
+    def predict(self, example):
+        return VerdictPrediction(
+            label="positive",
+            positive_probability=0.91,
+            model_path=Path("fake_page_verdict.joblib"),
+        )
 
 
 @pytest.fixture
@@ -66,6 +75,12 @@ def page_store(tmp_path):
         yield store
 
 
+@pytest.fixture
+def link_store(tmp_path):
+    with LinkStore(tmp_path / "pages.sqlite") as store:
+        yield store
+
+
 def allow_all_robots() -> RobotFileParser:
     parser = RobotFileParser()
     parser.parse([])  # empty rules => everything is allowed
@@ -93,8 +108,24 @@ def run_crawl(
     seen_urls=None,
     host_counts=None,
     max_pages_per_host=None,
+    page_critic=None,
     **site_overrides,
 ):
+    page_critic = page_critic or FakePagePredictor()
+    if link_store is None:
+        with LinkStore(tmp_path / "pages.sqlite") as generated_link_store:
+            return run_crawl(
+                client,
+                tmp_path,
+                page_store,
+                link_store=generated_link_store,
+                seen_urls=seen_urls,
+                host_counts=host_counts,
+                max_pages_per_host=max_pages_per_host,
+                page_critic=page_critic,
+                **site_overrides,
+            )
+
     return CrawlRun(
         client=client,
         site=make_site(**site_overrides),
@@ -107,6 +138,7 @@ def run_crawl(
         seen_urls=seen_urls,
         host_counts=host_counts,
         max_pages_per_host=max_pages_per_host,
+        page_critic=page_critic,
     ).run()
 
 
@@ -162,6 +194,33 @@ def test_crawl_run_stores_selection_debug_metadata(client, tmp_path, page_store)
     assert root.language == "en"
     assert root.relevance is not None and root.relevance > 0.0
     assert root.token_count is not None and root.token_count >= 30
+
+
+def test_crawl_run_stores_pageverdict_metadata(client, tmp_path, page_store):
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        run_crawl(
+            client,
+            tmp_path,
+            page_store,
+            link_store=link_store,
+            page_critic=FakePagePredictor(),
+        )
+        link_row = link_store.con.execute(
+            "SELECT parent_pageverdict_score, parent_pageverdict_label, "
+            "parent_pageverdict_decision FROM link_candidates "
+            "WHERE parent_url = ? AND target_url = ?",
+            ("https://host/", "https://host/a"),
+        ).fetchone()
+
+    root = {page.url: page for page in page_store.iter_html_pages()}["https://host/"]
+    assert root.pageverdict.score == 0.91
+    assert root.pageverdict.label == "positive"
+    assert root.pageverdict.decision == "index_strong"
+    assert root.pageverdict.model == "fake_page_verdict.joblib"
+    assert root.pageverdict.snippet is not None
+    assert link_row["parent_pageverdict_score"] == 0.91
+    assert link_row["parent_pageverdict_label"] == "positive"
+    assert link_row["parent_pageverdict_decision"] == "index_strong"
 
 
 def test_crawl_run_respects_max_pages_per_seed(client, tmp_path, page_store, requested_paths):
@@ -417,13 +476,11 @@ def test_shared_seen_prevents_refetch_across_seeds(client, tmp_path, page_store,
     assert requested_paths == ["/"]  # nur der Root, keine Kinder-Refetches
 
 
-def test_crawl_run_follows_links_from_relevant_non_english_page(
-    tmp_path, page_store, requested_paths, monkeypatch
+def test_crawl_run_rejects_german_page_but_follows_its_links(
+    tmp_path, page_store, requested_paths
 ):
-    # relevante, aber deutsche Hub-Seite: NICHT indexiert (EN-only), ihre Links
-    # werden aber trotzdem verfolgt -> die verlinkte englische Seite landet im Index.
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 1.0)
-
+    # only English content may be indexed; a German page is rejected even with a
+    # positive model score, but its links are still followed.
     de_root = (
         '<html lang="de"><title>Tübingen</title>'
         "Die Universitätsstadt Tübingen liegt am Neckar. Tübingen ist alt. "
@@ -437,16 +494,9 @@ def test_crawl_run_follows_links_from_relevant_non_english_page(
     with make_client(pages, requested_paths) as client:
         run_crawl(client, tmp_path, page_store)
 
-    # die deutsche Wurzel ist relevant, wird aber nicht gespeichert ...
     assert "https://host/" not in stored_urls(page_store)
-    # ... ihr Link wurde dennoch verfolgt und die englische Kindseite indexiert
     assert "https://host/en" in stored_urls(page_store)
     assert "/en" in requested_paths
 
     rejected_root = rejected_records(page_store)["https://host/"]
     assert rejected_root.exclusion_reason == "non_english"
-    assert rejected_root.language == "de"
-    assert rejected_root.status_code == 200
-    assert rejected_root.content_type == "text/html"
-    assert rejected_root.relevance is not None and rejected_root.relevance >= 3.0
-    assert rejected_root.token_count is not None and rejected_root.token_count >= 30

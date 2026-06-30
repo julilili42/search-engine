@@ -8,9 +8,9 @@ dependencies = [
     "httpx>=0.28.1",
     "selectolax>=0.4.10",
     "pydantic>=2.13.4",
-    "nltk>=3.9.4",
     "torch>=2.12.1",
     "transformers>=4.46.0",
+    "verdict-ml",
 ]
 
 [project.scripts]
@@ -20,6 +20,9 @@ crawl = "tuebingen_crawler.main:main"
 dev = [
     "pytest>=9.0.3",
 ]
+
+[tool.uv.sources]
+verdict-ml = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tuebingen_crawler"]

@@ -1,253 +1,142 @@
-import tuebingen_crawler.page_classifier as page_classifier
-from tuebingen_crawler.models import Language, REL_THRESHOLD
+from pathlib import Path
+
+from tuebingen_crawler.models import Language
 from tuebingen_crawler.page_classifier import (
+    CLASSIFIER_CONFIG,
     PageIndexExclusion,
-    SEMANTIC_CONFIG,
     classify_page,
-    detect_language,
-    lexical_relevance_score,
+    page_snippet,
 )
+from verdict_ml.base import VerdictPrediction
 
 
-# --- language detection ------------------------------------------------------
+class FakePagePredictor:
+    def __init__(self, probability: float, label: str = "positive") -> None:
+        self.probability = probability
+        self.label = label
+        self.seen = []
 
-def test_detect_language_uses_lang_attribute_without_loading_stopwords(monkeypatch):
-    def fail_load_stopwords():
-        raise AssertionError("stopwords should not be loaded for short text")
-
-    monkeypatch.setattr(page_classifier, "load_stopwords", fail_load_stopwords)
-
-    assert detect_language(["short", "text"], "en") is Language.EN
-
-
-def test_detect_language_uses_cached_nltk_stopwords(monkeypatch):
-    monkeypatch.setattr(page_classifier, "_STOPWORDS", ({"und", "der"}, {"the", "and"}))
-
-    tokens = [
-        "the", "and", "the", "and", "the", "and",
-        "university", "town", "river", "city", "history",
-    ] * 3
-
-    assert detect_language(tokens) is Language.EN
+    def predict(self, example):
+        self.seen.append(example)
+        return VerdictPrediction(
+            label=self.label,
+            positive_probability=self.probability,
+            model_path=Path("fake.joblib"),
+        )
 
 
-def test_detect_language_trusts_non_english_lang_attribute(monkeypatch):
-    def fail_load_stopwords():
-        raise AssertionError("stopwords should not decide when lang is declared")
-
-    monkeypatch.setattr(page_classifier, "load_stopwords", fail_load_stopwords)
-
-    english_looking = ["a", "i", "o", "it", "do", "as"] * 20
-    assert detect_language(english_looking, "cs") is Language.UNKNOWN
-
-
-# --- topic-drift regression tests -------------------------------------------
-
-def test_lexical_relevance_substring_pub_in_republic_does_not_count():
-    # "pub" must not match inside "Republic"/"Public"; without a core Tübingen
-    # term the page is not relevant at all.
-    body = "The Czech Republic is a country in central Europe with many pubs. " * 5
-    assert lexical_relevance_score(
-        "https://en.wikipedia.org/wiki/Czech_Republic", "Czech Republic", body
-    ) == 0.0
-
-
-def test_lexical_relevance_generic_terms_alone_do_not_qualify():
-    body = ("This list ranks restaurants and hotels. Restaurant, restaurant, "
-            "hotel, cafe, bistro, brewery, pub. ") * 10
-    assert lexical_relevance_score(
-        "https://en.wikipedia.org/wiki/List_of_restaurants",
-        "List of Michelin-starred restaurants", body,
-    ) == 0.0
-
-
-def test_lexical_relevance_keeps_real_tuebingen_page():
-    body = ("Tübingen is a university town on the river Neckar. The old town of "
-            "Tübingen and the university of Tübingen attract many visitors. ") * 5
-    score = lexical_relevance_score(
-        "https://en.wikipedia.org/wiki/T%C3%BCbingen", "Tübingen", body
+def test_page_snippet_prefers_description_and_h1_before_text():
+    snippet = page_snippet(
+        description="Official English city page.",
+        h1="Tübingen tourism",
+        text="Body text " * 100,
     )
-    assert score >= REL_THRESHOLD
+
+    assert snippet.startswith("Official English city page. Tübingen tourism")
+    assert len(snippet) <= 700
 
 
-def test_lexical_relevance_named_entity_without_word_tuebingen_qualifies():
-    # Bebenhausen is a Tübingen district; should qualify via the named-core list.
-    body = ("Bebenhausen Abbey is a former Cistercian monastery near the town. "
-            "The Bebenhausen monastery is a popular destination. ") * 5
-    score = lexical_relevance_score(
-        "https://en.wikipedia.org/wiki/Bebenhausen_Abbey", "Bebenhausen Abbey", body
-    )
-    assert score >= REL_THRESHOLD
-
-
-def test_lexical_relevance_title_only_match_qualifies():
-    # a page titled about Tübingen counts even with a neutral body (recall)
-    body = "A museum showing art, coins and prehistoric artefacts to its visitors. " * 5
-    score = lexical_relevance_score(
-        "https://example.com/museum", "Tübingen City Museum", body
-    )
-    assert score >= REL_THRESHOLD
-
-
-def test_lexical_relevance_description_match_counts():
-    body = "A museum showing art, coins and prehistoric artefacts to its visitors. " * 5
-    score = lexical_relevance_score(
-        "https://example.com/museum",
-        "City Museum",
-        body,
-        description="Museum in Tübingen",
-    )
-    assert score > 0.0
-
-
-def test_lexical_relevance_h1_match_qualifies():
-    body = "A museum showing art, coins and prehistoric artefacts to its visitors. " * 5
-    score = lexical_relevance_score(
-        "https://example.com/museum",
-        "City Museum",
-        body,
-        h1="Tübingen City Museum",
-    )
-    assert score >= REL_THRESHOLD
-
-
-def test_lexical_relevance_single_incidental_mention_is_filtered():
-    # one passing mention of Tübingen in an otherwise off-topic page is too weak
-    body = ("This article is about German universities in general. "
-            "Heidelberg, Munich and Tübingen are mentioned once. ") + (
-            "Universities educate students across many disciplines. " * 30)
-    score = lexical_relevance_score(
-        "https://example.com/german-universities", "German universities", body
-    )
-    assert score < REL_THRESHOLD
-
-
-# --- semantic modulation of the page relevance ------------------------------
-
-_TUEBINGEN_URL = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
-_TUEBINGEN_BODY = (
-    "Tübingen is a university town on the river Neckar. The old town of "
-    "Tübingen and the university of Tübingen attract many visitors. "
-) * 5
-
-
-def test_classify_page_rejects_offtopic_english_page(monkeypatch):
-    # an English page without a lexical signal is run through the model, but a
-    # low similarity keeps it out of the index.
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 0.3)
-
+def test_classify_page_indexes_strong_positive_page():
     verdict = classify_page(
-        "https://example.com/czech", "Czech Republic", "A country in Europe. " * 10
-    )
-    assert verdict.relevance == 0.0
-
-
-def test_classify_page_high_similarity_keeps_lexical_score(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 1.0)
-
-    lexical = lexical_relevance_score(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY)
-    verdict = classify_page(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY, "en")
-
-    assert verdict.relevance == lexical
-
-
-def test_classify_page_includes_description_and_h1_in_semantic_text(monkeypatch):
-    seen: dict[str, str] = {}
-
-    def capture_similarity(title, text):
-        seen["text"] = text
-        return 1.0
-
-    monkeypatch.setattr(page_classifier, "topic_similarity", capture_similarity)
-
-    classify_page(
-        "https://example.com/museum",
-        "City Museum",
-        "Visible body text. " * 30,
-        "en",
-        description="Museum in Tübingen",
-        h1="Permanent exhibition",
+        "https://www.tuebingen.de/en/",
+        "Tübingen",
+        "English visitor information about Tübingen.",
+        Language.EN,
+        description="Official English visitor information.",
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
     )
 
-    assert "Museum in Tübingen" in seen["text"]
-    assert "Permanent exhibition" in seen["text"]
-    assert "Visible body text" in seen["text"]
+    assert verdict.should_index
+    assert verdict.index_exclusion is None
+    assert verdict.decision_label == "index_strong"
+    assert verdict.relevance >= 6.0
+    assert verdict.language == "en"
+    assert verdict.score == CLASSIFIER_CONFIG.strong_threshold
 
 
-def test_classify_page_low_similarity_demotes_to_floor(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 0.0)
+def test_classify_page_indexes_mid_confidence_page_cautiously():
+    verdict = classify_page(
+        "https://example.com/tuebingen-directory",
+        "Tübingen directory",
+        "A narrow directory page.",
+        Language.EN,
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.index_threshold),
+    )
 
-    lexical = lexical_relevance_score(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY)
-    verdict = classify_page(_TUEBINGEN_URL, "Tübingen", _TUEBINGEN_BODY, "en")
-
-    assert verdict.relevance == lexical * SEMANTIC_CONFIG.lexical_floor
-
-
-def test_classify_page_model_can_demote_borderline_page_below_threshold(monkeypatch):
-    # a url-only match that the model finds off-topic should drop below the
-    # relevance threshold.
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 0.0)
-
-    body = "An unrelated article about something else entirely. " * 10
-    verdict = classify_page("https://www.tuebingen.de/hotel-booking", "Booking", body, "en")
-
-    assert 0.0 < verdict.relevance < REL_THRESHOLD
+    assert verdict.should_index
+    assert verdict.decision_label == "index_cautious"
+    assert verdict.relevance == 3.0
 
 
-def test_classify_page_does_not_keep_short_relevant_english_page(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 1.0)
+def test_classify_page_rejects_but_still_follows_low_score_page():
+    verdict = classify_page(
+        "https://example.com/tuebingen-side",
+        "Tübingen",
+        "A low-scoring page that still mentions Tübingen.",
+        Language.EN,
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.index_threshold - 0.01, "negative"),
+    )
 
-    verdict = classify_page("https://example.com/short", "Tübingen", "Short note.", "en")
-
-    assert verdict.is_english
-    assert verdict.is_relevant
-    assert not verdict.has_enough_text
-    assert verdict.should_follow_links
     assert not verdict.should_index
-    assert verdict.index_exclusion is PageIndexExclusion.TOO_SHORT
+    assert verdict.index_exclusion is PageIndexExclusion.LOW_PAGEVERDICT_SCORE
+    assert verdict.decision_label == "reject_follow"
+    assert verdict.relevance < 3.0
 
 
-def test_short_relevant_page_is_too_short_before_non_english(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 1.0)
+def test_classify_page_uses_serp_like_feature_fields():
+    predictor = FakePagePredictor(0.8)
+    classify_page(
+        "https://www.tuebingen.de/en/",
+        "Title",
+        "Body excerpt.",
+        Language.EN,
+        description="Meta description.",
+        predictor=predictor,
+    )
 
-    verdict = classify_page("https://example.com/short", "Tübingen", "Kurzer Text.", "de")
-
-    assert verdict.is_relevant
-    assert verdict.index_exclusion is PageIndexExclusion.TOO_SHORT
-
-
-# --- semantic admission of pages without any lexical signal ------------------
-
-# a page with no "Tübingen"/named-entity term anywhere -> lexical score is 0
-_TOKENLESS_URL = "https://example.com/old-town"
-_TOKENLESS_BODY = "The old town has a market square, half-timbered houses and a castle. " * 5
-
-
-def test_classify_page_admits_tokenless_english_page_on_high_similarity(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 0.9)
-
-    verdict = classify_page(_TOKENLESS_URL, "Old Town", _TOKENLESS_BODY, "en")
-
-    assert verdict.relevance >= REL_THRESHOLD
-    # stays below strong lexical hits
-    assert verdict.relevance <= REL_THRESHOLD + SEMANTIC_CONFIG.admit_span
+    [example] = predictor.seen
+    assert example.title == "Title"
+    assert example.url == "https://www.tuebingen.de/en/"
+    assert example.display_url == "www.tuebingen.de/en"
+    assert example.snippet == "Meta description. Body excerpt."
 
 
-def test_classify_page_rejects_tokenless_english_page_on_low_similarity(monkeypatch):
-    monkeypatch.setattr(page_classifier, "topic_similarity", lambda title, text: 0.4)
+def test_classify_page_gates_off_topic_page_even_with_high_score():
+    # a confidently-scored page that never mentions Tübingen is off-topic drift
+    verdict = classify_page(
+        "https://www.visit-mv.com/family",
+        "Family Vacation at the Baltic Sea in Mecklenburg-Vorpommern",
+        "Mecklenburg-Vorpommern offers wide beaches along the Baltic Sea coast.",
+        Language.EN,
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+    )
 
-    verdict = classify_page(_TOKENLESS_URL, "Old Town", _TOKENLESS_BODY, "en")
+    assert not verdict.should_index
+    assert verdict.index_exclusion is PageIndexExclusion.OFF_TOPIC
 
-    assert verdict.relevance == 0.0
+
+def test_classify_page_indexes_topical_page_without_tuebingen_in_title():
+    # Tübingen cue in the body is enough to count as on-topic
+    verdict = classify_page(
+        "https://example.com/old-town",
+        "Old Town",
+        "The historic old town sits on the Neckar in Tübingen.",
+        Language.EN,
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+    )
+
+    assert verdict.should_index
+    assert verdict.index_exclusion is None
 
 
-def test_classify_page_skips_model_for_tokenless_non_english_page(monkeypatch):
-    def fail_similarity(title, text):
-        raise AssertionError("model must not run on non-English pages without lexical signal")
+def test_classify_page_rejects_non_english_page():
+    verdict = classify_page(
+        "https://www.tuebingen.de/de/",
+        "Tübingen",
+        "Tübingen ist eine Universitätsstadt am Neckar.",
+        Language.DE,
+        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+    )
 
-    monkeypatch.setattr(page_classifier, "topic_similarity", fail_similarity)
-
-    # short body + lang attribute -> detected as German without loading stopwords
-    verdict = classify_page(_TOKENLESS_URL, "Altstadt", "Kurzer Text.", "de")
-
-    assert verdict.relevance == 0.0
+    assert not verdict.should_index
+    assert verdict.index_exclusion is PageIndexExclusion.NON_ENGLISH

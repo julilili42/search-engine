@@ -22,6 +22,8 @@ from .link_classifier import classify_link
 from .save_pages import LinkCandidateRecord, LinkStore, PageStore, PageVerdictMetadata
 from .frontier import push_frontier, pop_frontier
 from .dedup import simhash, is_near_duplicate
+from verdict_ml.link.predict import LinkVerdictPredictor
+from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,9 @@ logger = logging.getLogger(__name__)
 def crawl_hostname(
     config: Config,
     page_store: PageStore,
-    link_store: LinkStore | None = None,
+    link_store: LinkStore,
+    page_critic: PageVerdictPredictor,
+    link_critic: LinkVerdictPredictor | None = None,
 ) -> None:
     headers = {"Accept": config.accept, "User-Agent": config.user_agent}
     # avoids crawling duplicate pages
@@ -61,6 +65,8 @@ def crawl_hostname(
                 seen_texts=seen_texts,
                 host_counts=host_counts,
                 max_pages_per_host=config.max_pages_per_host,
+                page_critic=page_critic,
+                link_critic=link_critic,
             ).run()
 
             state.statistics.print()
@@ -76,11 +82,13 @@ class CrawlRun:
         page_store: PageStore,
         robot_parser: RobotFileParser,
         user_agent: str,
-        link_store: LinkStore | None = None,
+        link_store: LinkStore,
         seen_urls: set[str] | None = None,
         seen_texts: set[int] | None = None,
         host_counts: dict[str, int] | None = None,
         max_pages_per_host: int | None = None,
+        page_critic: PageVerdictPredictor,
+        link_critic: LinkVerdictPredictor | None = None,
     ) -> None:
         self.client = client
         self.site = site
@@ -94,6 +102,8 @@ class CrawlRun:
         self.seen_texts = seen_texts if seen_texts is not None else set()
         self.host_counts = host_counts if host_counts is not None else {}
         self.max_pages_per_host = max_pages_per_host
+        self.page_critic = page_critic
+        self.link_critic = link_critic
         self._state: CrawlState | None = None
 
     @property
@@ -147,7 +157,7 @@ class CrawlRun:
             )
             if follow_links is None:
                 continue
-            links, relevance = follow_links
+            links, relevance, pageverdict = follow_links
 
             # link extraction runs for every relevant page
             evaluate_links(
@@ -160,6 +170,7 @@ class CrawlRun:
                 host_counts=self.host_counts,
                 max_pages_per_host=self.max_pages_per_host,
                 link_store=self.link_store,
+                parent_pageverdict=pageverdict,
             )
 
             maybe_save_state(self.save_state_every, state_path, self.state)
@@ -175,7 +186,7 @@ class CrawlRun:
         hostname: str,
         depth: int,
         fetch_result: FetchResult,
-    ) -> tuple[list[tuple[str, str]], float] | None:
+    ) -> tuple[list[tuple[str, str]], float, PageVerdictMetadata] | None:
         if fetch_result.body is None:
             status = fetch_result.status_code
             bad_status = status < 200 or status >= 300
@@ -228,10 +239,12 @@ class CrawlRun:
             current_url,
             page.title,
             page.text,
-            page.lang,
+            page.language,
             description=page.description,
             h1=page.h1,
+            predictor=self.page_critic,
         )
+        pageverdict = _pageverdict_metadata(verdict)
 
         if verdict.should_index:
             # avoids recrawling the same content
@@ -248,6 +261,7 @@ class CrawlRun:
                     language=verdict.language.value,
                     relevance=verdict.relevance,
                     token_count=verdict.token_count,
+                    pageverdict=pageverdict,
                 )
                 return None
             self.seen_texts.add(fingerprint)
@@ -262,7 +276,7 @@ class CrawlRun:
             ):
                 return None
 
-            return page.links, verdict.relevance
+            return page.links, verdict.relevance, pageverdict
 
         index_exclusion = verdict.index_exclusion
         if index_exclusion is not None:
@@ -276,12 +290,10 @@ class CrawlRun:
                 language=verdict.language.value,
                 relevance=verdict.relevance,
                 token_count=verdict.token_count,
+                pageverdict=pageverdict,
             )
         _log_index_exclusion(verdict, fetch_result.status_code, current_url)
-        if not verdict.should_follow_links:
-            return None
-
-        return page.links, verdict.relevance
+        return page.links, verdict.relevance, pageverdict
 
     def reject_page(
         self,
@@ -295,6 +307,7 @@ class CrawlRun:
         language: str | None = None,
         relevance: float | None = None,
         token_count: int | None = None,
+        pageverdict: PageVerdictMetadata | None = None,
     ) -> None:
         self.page_store.upsert_rejected_page(
             title=title,
@@ -307,6 +320,11 @@ class CrawlRun:
             language=language,
             relevance=relevance,
             token_count=token_count,
+            pageverdict_score=pageverdict.score if pageverdict else None,
+            pageverdict_label=pageverdict.label if pageverdict else None,
+            pageverdict_decision=pageverdict.decision if pageverdict else None,
+            pageverdict_model=pageverdict.model if pageverdict else None,
+            pageverdict_snippet=pageverdict.snippet if pageverdict else None,
         )
 
     def save_page(
@@ -342,6 +360,11 @@ class CrawlRun:
             language=verdict.language.value,
             relevance=verdict.relevance,
             token_count=verdict.token_count,
+            pageverdict_score=verdict.score,
+            pageverdict_label=verdict.label,
+            pageverdict_decision=verdict.decision_label,
+            pageverdict_model=verdict.model,
+            pageverdict_snippet=verdict.snippet,
         )
         self.state.statistics.saved += 1
         self.host_counts[hostname] = self.host_counts.get(hostname, 0) + 1
@@ -359,6 +382,16 @@ class CrawlRun:
 def _host_at_cap(host_counts: dict[str, int], max_pages_per_host: int | None, host: str) -> bool:
     return max_pages_per_host is not None and host_counts.get(host, 0) >= max_pages_per_host
 
+
+def _pageverdict_metadata(verdict: PageVerdict) -> PageVerdictMetadata:
+    return PageVerdictMetadata(
+        score=verdict.score,
+        label=verdict.label,
+        decision=verdict.decision_label,
+        model=verdict.model,
+        snippet=verdict.snippet,
+    )
+
 # add relevant urls on current_url to frontier
 def evaluate_links(
     state: CrawlState,
@@ -370,9 +403,17 @@ def evaluate_links(
     host_counts: dict[str, int],
     max_pages_per_host: int | None,
     link_store: LinkStore | None = None,
+    parent_pageverdict: PageVerdictMetadata | None = None,
 ) -> None:
     child_depth = depth + 1
     records: list[LinkCandidateRecord] = []
+    parent_pageverdict = parent_pageverdict or PageVerdictMetadata(
+        score=None,
+        label=None,
+        decision=None,
+        model=None,
+        snippet=None,
+    )
 
     for href, anchor in links:
         final_url, is_canonical = canonical_url(href, current_url)
@@ -389,13 +430,7 @@ def evaluate_links(
                 parent_url=current_url,
                 parent_host=parent_host,
                 parent_depth=depth,
-                parent_pageverdict=PageVerdictMetadata(
-                    score=None,
-                    label=None,
-                    decision=None,
-                    model=None,
-                    snippet=None,
-                ),
+                parent_pageverdict=parent_pageverdict,
                 parent_relevance=parent_relevance,
                 target_url=final_url,
                 target_host=host,
@@ -423,21 +458,21 @@ def evaluate_links(
 
 def _log_index_exclusion(verdict: PageVerdict, status_code: int, url: str) -> None:
     match verdict.index_exclusion:
-        case PageIndexExclusion.OFFTOPIC:
+        case PageIndexExclusion.LOW_PAGEVERDICT_SCORE:
             logger.debug(
-                "%-7s | %3d | rel=%5.1f | %s",
-                "OFFTOPIC",
+                "%-7s | %3d | pv=%0.3f | rel=%5.1f | %s",
+                "LOW-PV",
                 status_code,
+                verdict.score or 0.0,
                 verdict.relevance,
                 url,
             )
-        case PageIndexExclusion.TOO_SHORT:
+        case PageIndexExclusion.OFF_TOPIC:
             logger.debug(
-                "%-7s | %3d | rel=%5.1f | tokens=%d | %s",
-                "SHORT",
+                "%-7s | %3d | pv=%0.3f | %s",
+                "OFFTOPIC",
                 status_code,
-                verdict.relevance,
-                verdict.token_count,
+                verdict.score or 0.0,
                 url,
             )
         case PageIndexExclusion.NON_ENGLISH:
@@ -445,7 +480,7 @@ def _log_index_exclusion(verdict: PageVerdict, status_code: int, url: str) -> No
                 "%-7s | %3d | lang=%s | %s",
                 "NON-EN",
                 status_code,
-                verdict.language,
+                verdict.language.value,
                 url,
             )
         case None:
