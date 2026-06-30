@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class VerdictModels:
     page: PageVerdictPredictor
-    link: LinkVerdictPredictor | None
+    link: LinkVerdictPredictor
 
 
 def load_verdict_models() -> VerdictModels:
@@ -38,13 +38,12 @@ def _load_page_model() -> PageVerdictPredictor:
     return PageVerdictPredictor()
 
 
-def _load_link_model() -> LinkVerdictPredictor | None:
+def _load_link_model() -> LinkVerdictPredictor:
     if not DEFAULT_LINK_MODEL_PATH.exists():
-        logger.warning(
-            "No LinkVerdict model found at %s; using heuristic link classification",
-            DEFAULT_LINK_MODEL_PATH,
+        raise FileNotFoundError(
+            f"Required LinkVerdict model artifact not found: {DEFAULT_LINK_MODEL_PATH}. "
+            "Train it first with `uv run verdict-ml-train-link`."
         )
-        return None
 
     logger.info("Using LinkVerdict model: %s", DEFAULT_LINK_MODEL_PATH)
     return LinkVerdictPredictor()
