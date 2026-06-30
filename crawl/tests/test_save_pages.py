@@ -248,6 +248,9 @@ def test_link_store_creates_link_candidates_table(tmp_path):
         "should_enqueue",
         "selected",
         "rejection_reason",
+        "target_status",
+        "target_pageverdict_score",
+        "target_exclusion_reason",
     } <= columns
 
 
@@ -293,6 +296,62 @@ def test_link_store_upserts_link_candidate(tmp_path):
     assert row["linkverdict_model"] == "ml/artifacts/link_verdict.joblib"
     assert row["should_enqueue"] == 1
     assert row["selected"] == 1
+
+
+def test_link_store_updates_target_metadata(tmp_path):
+    with LinkStore(tmp_path / "pages.sqlite") as store:
+        store.upsert_link_candidates(
+            [
+                LinkCandidateRecord(
+                    parent_url="https://host/",
+                    parent_host="host",
+                    parent_depth=0,
+                    parent_pageverdict=PageVerdictMetadata(
+                        score=None,
+                        label=None,
+                        decision=None,
+                        model=None,
+                        snippet=None,
+                    ),
+                    parent_relevance=5.0,
+                    target_url="https://host/a",
+                    target_host="host",
+                    target_depth=1,
+                    anchor="Tübingen A",
+                    raw_score=6.5,
+                    should_enqueue=True,
+                    selected=True,
+                )
+            ]
+        )
+        store.update_link_target(
+            url="https://host/a",
+            target_status="rejected",
+            status_code=404,
+            content_type="text/html",
+            language="en",
+            relevance=1.2,
+            token_count=42,
+            pageverdict_score=0.2,
+            pageverdict_label="negative",
+            pageverdict_decision="reject_follow",
+            exclusion_reason="bad_status",
+            fetched_at="2026-06-30T12:00:00+00:00",
+        )
+
+        [row] = store.con.execute("SELECT * FROM link_candidates").fetchall()
+
+    assert row["target_status"] == "rejected"
+    assert row["target_status_code"] == 404
+    assert row["target_content_type"] == "text/html"
+    assert row["target_language"] == "en"
+    assert row["target_relevance"] == 1.2
+    assert row["target_token_count"] == 42
+    assert row["target_pageverdict_score"] == 0.2
+    assert row["target_pageverdict_label"] == "negative"
+    assert row["target_pageverdict_decision"] == "reject_follow"
+    assert row["target_exclusion_reason"] == "bad_status"
+    assert row["target_fetched_at"] == "2026-06-30T12:00:00+00:00"
 
 
 def test_link_store_rejects_existing_db_with_incompatible_schema(tmp_path):
@@ -384,6 +443,20 @@ def test_crawl_export_db_exports_linkverdict_csv(tmp_path):
                 )
             ]
         )
+        store.update_link_target(
+            url="https://host/a",
+            target_status="page",
+            status_code=200,
+            content_type="text/html",
+            language="en",
+            relevance=8.0,
+            token_count=100,
+            pageverdict_score=0.9,
+            pageverdict_label="positive",
+            pageverdict_decision="index_strong",
+            exclusion_reason=None,
+            fetched_at="2026-06-30T12:00:00+00:00",
+        )
 
     with CrawlExportDB(db_path) as export_db:
         export_db.export_linkverdict_csv(out)
@@ -396,3 +469,5 @@ def test_crawl_export_db_exports_linkverdict_csv(tmp_path):
     assert rows[0]["target_url"] == "https://host/a"
     assert rows[0]["linkverdict_score"] == "0.77"
     assert rows[0]["selected"] == "1"
+    assert rows[0]["target_status"] == "page"
+    assert rows[0]["target_pageverdict_score"] == "0.9"

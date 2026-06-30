@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from .frontier import _host_at_cap, _host_off_topic_exhausted, push_frontier
+from .link_classifier import LinkVerdict, classify_link
+from .models import CrawlState
+from .save_pages import LinkCandidateRecord, LinkStore, PageVerdictMetadata
+from .urls import canonical_url, normalize_host
+from verdict_ml.link.predict import LinkVerdictPredictor
+
+# per page, cap links from the same URL family, no flooding of near-identical links
+MAX_LINKS_PER_URL_FAMILY_PER_PAGE = 3
+MAX_LINKS_PER_HOST_PER_PAGE = 8
+
+_LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
+
+
+@dataclass(frozen=True)
+class _LinkContext:
+    current_url: str
+    parent_host: str
+    parent_depth: int
+    child_depth: int
+    parent_relevance: float
+    parent_pageverdict: PageVerdictMetadata
+
+
+# group url by host and website path segement, language prefix is transparent
+# /en/news/a      => ("example.com", "en", "news")
+# /en/news/b      => ("example.com", "en", "news")
+# en is ignored and both urls are in the same url family
+def _url_family(url: str) -> tuple[str, str, str]:
+    parsed = urlparse(url)
+    host = normalize_host(parsed.hostname)
+    segments = [segment for segment in parsed.path.strip("/").split("/") if segment]
+    first = segments[0].lower() if len(segments) >= 1 else ""
+    second = segments[1].lower() if len(segments) >= 2 else ""
+    if first in _LANGUAGE_SEGMENTS:
+        return host, first, second
+    return host, first, ""
+
+
+def _link_record(
+    ctx: _LinkContext, verdict: LinkVerdict, anchor: str, *, selected: bool, reason: str | None
+) -> LinkCandidateRecord:
+    return LinkCandidateRecord(
+        parent_url=ctx.current_url,
+        parent_host=ctx.parent_host,
+        parent_depth=ctx.parent_depth,
+        parent_pageverdict=ctx.parent_pageverdict,
+        parent_relevance=ctx.parent_relevance,
+        target_url=verdict.url,
+        target_host=normalize_host(urlparse(verdict.url).hostname),
+        target_depth=ctx.child_depth,
+        anchor=anchor,
+        raw_score=verdict.frontier_score,
+        # skipped links never reached the model, verdict is empty
+        linkverdict_score=None if verdict.skipable else verdict.score,
+        linkverdict_label=None if verdict.skipable else verdict.label,
+        linkverdict_model=None if verdict.skipable else verdict.model,
+        should_enqueue=reason not in {"not_enqueued", "host_off_topic"},
+        selected=selected,
+        rejection_reason=reason,
+    )
+
+
+# classifies each link; returns the enqueueable candidates plus the records for
+def _classify_candidates(
+    ctx: _LinkContext,
+    links: list[tuple[str, str]],
+    state: CrawlState,
+    host_counts: dict[str, int],
+    host_reject_counts: dict[str, int],
+    max_pages_per_host: int | None,
+    link_critic: LinkVerdictPredictor,
+) -> tuple[list[tuple[LinkVerdict, str]], list[LinkCandidateRecord]]:
+    candidates: list[tuple[LinkVerdict, str]] = []
+    records: list[LinkCandidateRecord] = []
+    for href, anchor in links:
+        final_url, is_canonical = canonical_url(href, ctx.current_url)
+        if not is_canonical or final_url in state.seen_urls:
+            continue
+
+        host = normalize_host(urlparse(final_url).hostname)
+        verdict = classify_link(
+            link_critic,
+            anchor=anchor,
+            target_url=final_url,
+            target_host=host,
+            target_depth=ctx.child_depth,
+            parent_url=ctx.current_url,
+            parent_host=ctx.parent_host,
+            parent_depth=ctx.parent_depth,
+            parent_relevance=ctx.parent_relevance,
+            parent_score=ctx.parent_pageverdict.score,
+            parent_decision=ctx.parent_pageverdict.decision or "",
+        )
+        if not verdict.enqueue or _host_at_cap(host_counts, max_pages_per_host, host):
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="not_enqueued"))
+        elif _host_off_topic_exhausted(host_counts, host_reject_counts, host):
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="host_off_topic"))
+        else:
+            candidates.append((verdict, anchor))
+    return candidates, records
+
+
+# enqueues the best-scoring candidates first
+def _enqueue_with_page_caps(
+    ctx: _LinkContext,
+    state: CrawlState,
+    candidates: list[tuple[LinkVerdict, str]],
+    host_counts: dict[str, int],
+) -> list[LinkCandidateRecord]:
+    records: list[LinkCandidateRecord] = []
+    host_selected: dict[str, int] = {}
+    family_selected: dict[tuple[str, str, str], int] = {}
+    for verdict, anchor in sorted(
+        candidates, key=lambda item: item[0].frontier_score, reverse=True
+    ):
+        host = normalize_host(urlparse(verdict.url).hostname)
+        if host_selected.get(host, 0) >= MAX_LINKS_PER_HOST_PER_PAGE:
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_host_budget"))
+            continue
+
+        family = _url_family(verdict.url)
+        if family_selected.get(family, 0) >= MAX_LINKS_PER_URL_FAMILY_PER_PAGE:
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_family_budget"))
+            continue
+
+        push_frontier(
+            state,
+            verdict.frontier_score,
+            verdict.url,
+            ctx.child_depth,
+            saved_urls_by_host=host_counts,
+        )
+        # only mark URLs we actually enqueued as seen
+        state.seen_urls.add(verdict.url)
+        host_selected[host] = host_selected.get(host, 0) + 1
+        family_selected[family] = family_selected.get(family, 0) + 1
+        records.append(_link_record(ctx, verdict, anchor, selected=True, reason=None))
+    return records
+
+
+# classify a page's links and add the relevant ones to the frontier
+def evaluate_links(
+    state: CrawlState,
+    links: list[tuple[str, str]],
+    current_url: str,
+    depth: int,
+    parent_relevance: float,
+    parent_host: str,
+    host_counts: dict[str, int],
+    max_pages_per_host: int | None,
+    link_critic: LinkVerdictPredictor,
+    host_reject_counts: dict[str, int] | None = None,
+    link_store: LinkStore | None = None,
+    parent_pageverdict: PageVerdictMetadata | None = None,
+) -> None:
+    ctx = _LinkContext(
+        current_url=current_url,
+        parent_host=parent_host,
+        parent_depth=depth,
+        child_depth=depth + 1,
+        parent_relevance=parent_relevance,
+        parent_pageverdict=parent_pageverdict
+        or PageVerdictMetadata(score=None, label=None, decision=None, model=None, snippet=None),
+    )
+
+    candidates, records = _classify_candidates(
+        ctx, links, state, host_counts, host_reject_counts or {}, max_pages_per_host, link_critic
+    )
+    records += _enqueue_with_page_caps(ctx, state, candidates, host_counts)
+
+    if link_store is not None:
+        link_store.upsert_link_candidates(records)

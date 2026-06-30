@@ -15,7 +15,7 @@ from .storage import (
 )
 from .urls import validate_start_url, normalize_host
 from .fetcher import fetch_page
-from .frontier import pop_frontier, _host_at_cap
+from .frontier import pop_frontier, _host_at_cap, _host_off_topic_exhausted
 from .page_evaluation import evaluate_page
 from .link_evaluation import evaluate_links
 from .save_pages import LinkStore, PageStore
@@ -40,6 +40,7 @@ class CrawlRun:
         seen_urls: set[str] | None = None,
         seen_texts: set[int] | None = None,
         host_counts: dict[str, int] | None = None,
+        host_reject_counts: dict[str, int] | None = None,
         max_pages_per_host: int | None = None,
         page_critic: PageVerdictPredictor,
         link_critic: LinkVerdictPredictor,
@@ -55,6 +56,7 @@ class CrawlRun:
         self.seen_urls = seen_urls if seen_urls is not None else set()
         self.seen_texts = seen_texts if seen_texts is not None else set()
         self.host_counts = host_counts if host_counts is not None else {}
+        self.host_reject_counts = host_reject_counts if host_reject_counts is not None else {}
         self.max_pages_per_host = max_pages_per_host
         self.page_critic = page_critic
         self.link_critic = link_critic
@@ -112,6 +114,8 @@ class CrawlRun:
         hostname = normalize_host(urlparse(current_url).hostname)
         if _host_at_cap(self.host_counts, self.max_pages_per_host, hostname):
             return
+        if _host_off_topic_exhausted(self.host_counts, self.host_reject_counts, hostname):
+            return
 
         if not self.robot_parser.can_fetch(self.user_agent, current_url):
             logger.debug("Skipping disallowed URL: %s", current_url)
@@ -124,9 +128,11 @@ class CrawlRun:
 
         follow_links = evaluate_page(
             page_store=self.page_store,
+            link_store=self.link_store,
             save_dir=self.save_dir,
             seen_texts=self.seen_texts,
             host_counts=self.host_counts,
+            host_reject_counts=self.host_reject_counts,
             state=self.state,
             page_critic=self.page_critic,
             current_url=current_url,
@@ -147,6 +153,7 @@ class CrawlRun:
             parent_relevance=relevance,
             parent_host=hostname,
             host_counts=self.host_counts,
+            host_reject_counts=self.host_reject_counts,
             max_pages_per_host=self.max_pages_per_host,
             link_critic=self.link_critic,
             link_store=self.link_store,

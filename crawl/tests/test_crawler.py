@@ -5,10 +5,13 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import pytest
 
+import tuebingen_crawler.scheduler as scheduler_module
 from tuebingen_crawler.crawler import CrawlRun
+from tuebingen_crawler.frontier import REJECT_CUTOFF
+from tuebingen_crawler.scheduler import crawl_hostname
 from tuebingen_crawler.link_evaluation import evaluate_links
 from tuebingen_crawler.link_classifier import classify_link
-from tuebingen_crawler.models import CrawlSite, CrawlState
+from tuebingen_crawler.models import Config, CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import LinkStore, PageStore
 from verdict_ml.base import VerdictPrediction
 
@@ -125,6 +128,7 @@ def run_crawl(
     link_store=None,
     seen_urls=None,
     host_counts=None,
+    host_reject_counts=None,
     max_pages_per_host=None,
     page_critic=None,
     link_critic=None,
@@ -141,6 +145,7 @@ def run_crawl(
                 link_store=generated_link_store,
                 seen_urls=seen_urls,
                 host_counts=host_counts,
+                host_reject_counts=host_reject_counts,
                 max_pages_per_host=max_pages_per_host,
                 page_critic=page_critic,
                 link_critic=link_critic,
@@ -158,6 +163,7 @@ def run_crawl(
         user_agent="TestCrawler/1.0",
         seen_urls=seen_urls,
         host_counts=host_counts,
+        host_reject_counts=host_reject_counts,
         max_pages_per_host=max_pages_per_host,
         page_critic=page_critic,
         link_critic=link_critic,
@@ -264,6 +270,22 @@ def test_crawl_run_skips_fetching_when_host_capped(client, tmp_path, page_store,
     assert requested_paths == []
 
 
+def test_crawl_run_skips_fetching_when_host_off_topic_exhausted(
+    client, tmp_path, page_store, requested_paths
+):
+    state = run_crawl(
+        client,
+        tmp_path,
+        page_store,
+        host_counts={},
+        host_reject_counts={"host": REJECT_CUTOFF},
+    )
+
+    assert stored_urls(page_store) == []
+    assert state.statistics.saved == 0
+    assert requested_paths == []
+
+
 def test_crawl_run_cap_counts_saved_pages_per_host(client, tmp_path, page_store):
     host_counts: dict[str, int] = {}
     run_crawl(
@@ -293,6 +315,51 @@ def test_evaluate_links_skips_enqueue_for_capped_host():
     assert state.frontier == []
     # capped -> not enqueued -> not marked seen, so a stronger parent can retry later
     assert "https://host/a" not in state.seen_urls
+
+
+def test_evaluate_links_skips_off_topic_exhausted_host(tmp_path):
+    state = CrawlState()
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=[("https://junk.example/page", "Tübingen")],
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            host_reject_counts={"junk.example": REJECT_CUTOFF},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.9),
+            link_store=link_store,
+        )
+        [row] = link_store.con.execute(
+            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
+        ).fetchall()
+
+    assert state.frontier == []
+    assert "https://junk.example/page" not in state.seen_urls
+    assert row["selected"] == 0
+    assert row["should_enqueue"] == 0
+    assert row["rejection_reason"] == "host_off_topic"
+
+
+def test_evaluate_links_keeps_host_with_a_save_despite_many_rejects():
+    state = CrawlState()
+    evaluate_links(
+        state=state,
+        links=[("https://good.example/page", "Tübingen")],
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts={"good.example": 1},
+        host_reject_counts={"good.example": REJECT_CUTOFF + 1},
+        max_pages_per_host=None,
+        link_critic=FakeLinkPredictor(0.9),
+    )
+
+    assert len(state.frontier) == 1
 
 
 def test_evaluate_links_enqueues_below_cap():
@@ -338,6 +405,92 @@ def test_evaluate_links_records_link_candidates(tmp_path):
     assert row["should_enqueue"] == 1
     assert row["selected"] == 1
     assert row["parent_relevance"] == 5.0
+    assert row["linkverdict_score"] == 0.9
+    assert row["linkverdict_label"] == "positive"
+    assert row["linkverdict_model"] == "fake_link_verdict.joblib"
+
+
+def test_evaluate_links_skips_model_verdict_for_skipable_link(tmp_path):
+    state = CrawlState()
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=[("/image.jpg", "Tübingen photo")],
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.9),
+            link_store=link_store,
+        )
+
+        [row] = link_store.con.execute("SELECT * FROM link_candidates").fetchall()
+
+    # resource url is hard-skipped before the model, so it carries no verdict
+    assert row["should_enqueue"] == 0
+    assert row["linkverdict_score"] is None
+    assert row["linkverdict_label"] is None
+    assert row["linkverdict_model"] is None
+
+
+def test_evaluate_links_caps_links_per_url_family(tmp_path):
+    state = CrawlState()
+    # five links all in the same family (host + leading "news" segment)
+    links = [(f"/news/{i}", "Tübingen") for i in range(5)]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.9),
+            link_store=link_store,
+        )
+        rows = link_store.con.execute(
+            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
+        ).fetchall()
+
+    # only MAX_LINKS_PER_URL_FAMILY_PER_PAGE of the five are enqueued
+    assert len(state.frontier) == 3
+    assert sum(row["selected"] for row in rows) == 3
+    capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
+    assert len(capped) == 2
+    # capped links would have been enqueued absent the family budget
+    assert all(row["should_enqueue"] == 1 for row in capped)
+
+
+def test_evaluate_links_caps_links_per_host(tmp_path):
+    state = CrawlState()
+    # different first path segments avoid the URL-family cap; only the host cap applies
+    links = [(f"https://example.com/section-{i}", "Tübingen") for i in range(12)]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.9),
+            link_store=link_store,
+        )
+        rows = link_store.con.execute(
+            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
+        ).fetchall()
+
+    assert len(state.frontier) == 8
+    assert sum(row["selected"] for row in rows) == 8
+    capped = [row for row in rows if row["rejection_reason"] == "page_host_budget"]
+    assert len(capped) == 4
+    assert all(row["should_enqueue"] == 1 for row in capped)
 
 
 def test_evaluate_links_passes_saved_host_counts_to_frontier():
@@ -425,6 +578,15 @@ def test_crawl_run_counts_failed_fetches(tmp_path, page_store, requested_paths):
     assert missing.status_code == 404
     assert missing.content_type == "text/html"
     assert missing.crawl_depth == 1
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        link_row = link_store.con.execute(
+            "SELECT target_status, target_status_code, target_exclusion_reason "
+            "FROM link_candidates WHERE target_url = ?",
+            ("https://host/missing",),
+        ).fetchone()
+    assert link_row["target_status"] == "rejected"
+    assert link_row["target_status_code"] == 404
+    assert link_row["target_exclusion_reason"] == "bad_status"
 
 
 def test_crawl_run_records_non_html_fetch_as_rejected(tmp_path, page_store):
@@ -561,3 +723,114 @@ def test_crawl_run_rejects_german_page_but_follows_its_links(
 
     rejected_root = rejected_records(page_store)["https://host/"]
     assert rejected_root.exclusion_reason == "non_english"
+
+
+# --- crawl_hostname scheduler (weighted round-robin across seeds) -------------
+
+
+def _alnum(text: str) -> str:
+    return "".join(char for char in text.lower() if char.isalnum()) or "root"
+
+
+def _host_page(host: str, path: str, *links: tuple[str, str]) -> bytes:
+    # plenty of page-unique tokens so SimHash never near-dups these similar pages
+    unique = " ".join(f"{_alnum(host + path)}u{index}" for index in range(15))
+    anchors = "".join(f'<a href="{href}">Tübingen {label}</a>' for href, label in links)
+    body = (
+        f'<html lang="en"><title>Tübingen {_alnum(host + path)}</title>'
+        f"Tübingen page {unique} {unique}. {anchors}"
+    )
+    return body.encode("utf-8")
+
+
+def _build_tree(host: str) -> dict[str, bytes]:
+    # 9 pages within depth<=2: root -> 4 children -> 1 grandchild each
+    return {
+        "/": _host_page(host, "/", ("/a", "A"), ("/b", "B"), ("/c", "C"), ("/d", "D")),
+        "/a": _host_page(host, "/a", ("/a/x", "AX")),
+        "/b": _host_page(host, "/b", ("/b/x", "BX")),
+        "/c": _host_page(host, "/c", ("/c/x", "CX")),
+        "/d": _host_page(host, "/d", ("/d/x", "DX")),
+        "/a/x": _host_page(host, "/a/x"),
+        "/b/x": _host_page(host, "/b/x"),
+        "/c/x": _host_page(host, "/c/x"),
+        "/d/x": _host_page(host, "/d/x"),
+    }
+
+
+def _build_small_tree(host: str) -> dict[str, bytes]:
+    return {
+        "/": _host_page(host, "/", ("/p", "P"), ("/q", "Q")),
+        "/p": _host_page(host, "/p"),
+        "/q": _host_page(host, "/q"),
+    }
+
+
+def _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites) -> list[str]:
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, headers=HTML_HEADERS, content=b"")
+        body = host_trees.get(request.url.host, {}).get(request.url.path)
+        if body is None:
+            return httpx.Response(404, headers=HTML_HEADERS)
+        return httpx.Response(200, headers=HTML_HEADERS, content=body)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        scheduler_module.httpx,
+        "Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler)),
+    )
+
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        crawl_hostname(
+            Config(sites=sites, save_dir=tmp_path),
+            page_store,
+            link_store,
+            page_critic=FakePagePredictor(),
+            link_critic=FakeLinkPredictor(),
+        )
+
+    rows = page_store.con.execute("SELECT host FROM pages ORDER BY id").fetchall()
+    return [row["host"] for row in rows]
+
+
+def test_crawl_hostname_interleaves_seeds(tmp_path, page_store, monkeypatch):
+    # seed a has a big frontier, seed b a small one. Sequential crawling would put
+    # all of a before any of b; round-robin must let b produce pages first.
+    host_trees = {
+        "a.example": _build_tree("a.example"),
+        "b.example": _build_small_tree("b.example"),
+    }
+    sites = [make_site(url="https://a.example/"), make_site(url="https://b.example/")]
+
+    hosts_in_order = _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites)
+
+    a_positions = [i for i, host in enumerate(hosts_in_order) if host == "a.example"]
+    b_positions = [i for i, host in enumerate(hosts_in_order) if host == "b.example"]
+    assert a_positions and b_positions
+    # b starts producing before a is exhausted -> the seeds are interleaved
+    assert min(b_positions) < max(a_positions)
+
+
+def test_crawl_hostname_weights_seed_budget(tmp_path, page_store, monkeypatch):
+    # per-page interleaving so the weight is visible in the early save order
+    monkeypatch.setattr(scheduler_module, "ROUND_ROBIN_CHUNK", 1)
+    host_trees = {
+        "a.example": _build_tree("a.example"),
+        "b.example": _build_tree("b.example"),
+    }
+    sites = [
+        make_site(url="https://a.example/", round_robin_weight=1),
+        make_site(url="https://b.example/", round_robin_weight=2),
+    ]
+
+    hosts_in_order = _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites)
+
+    # weight 2 => seed b gets twice the per-round budget (round = a, b, b), so b
+    # leads the early saves ...
+    first_six = hosts_in_order[:6]
+    assert first_six.count("b.example") > first_six.count("a.example")
+    # ... while both seeds are still fully crawled by the end
+    assert hosts_in_order.count("a.example") == 9
+    assert hosts_in_order.count("b.example") == 9

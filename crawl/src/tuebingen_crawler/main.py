@@ -7,7 +7,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from .report import report_main
-from .crawler import crawl_hostname
+from .scheduler import crawl_hostname
 from .storage import load_seed_toml
 from .models import Config
 from .save_pages import LinkStore, PageStore

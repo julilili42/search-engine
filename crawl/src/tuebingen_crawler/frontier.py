@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import heapq
 import math
+import os
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -19,6 +20,7 @@ class FrontierQueueConfig:
 
 
 FRONTIER_QUEUE_CONFIG = FrontierQueueConfig()
+REJECT_CUTOFF = int(os.environ.get("CRAWL_HOST_REJECT_CUTOFF", "6"))
 
 
 def _host(url: str) -> str:
@@ -26,6 +28,19 @@ def _host(url: str) -> str:
         return normalize_host(urlparse(url).hostname)
     except ValueError:
         return ""
+
+
+# caps the number of saved pages per hostname: forces the crawler to spread out
+def _host_at_cap(host_counts: dict[str, int], max_pages_per_host: int | None, host: str) -> bool:
+    return max_pages_per_host is not None and host_counts.get(host, 0) >= max_pages_per_host
+
+
+def _host_off_topic_exhausted(
+    host_counts: dict[str, int], host_reject_counts: dict[str, int], host: str
+) -> bool:
+    if REJECT_CUTOFF <= 0:
+        return False
+    return host_reject_counts.get(host, 0) >= REJECT_CUTOFF and host_counts.get(host, 0) == 0
 
 
 def count_frontier_hosts(frontier: list[FrontierEntry]) -> dict[str, int]:
