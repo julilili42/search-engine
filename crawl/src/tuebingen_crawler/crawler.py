@@ -169,6 +169,7 @@ class CrawlRun:
                 parent_host=hostname,
                 host_counts=self.host_counts,
                 max_pages_per_host=self.max_pages_per_host,
+                link_critic=self.link_critic,
                 link_store=self.link_store,
                 parent_pageverdict=pageverdict,
             )
@@ -402,6 +403,7 @@ def evaluate_links(
     parent_host: str,
     host_counts: dict[str, int],
     max_pages_per_host: int | None,
+    link_critic: LinkVerdictPredictor,
     link_store: LinkStore | None = None,
     parent_pageverdict: PageVerdictMetadata | None = None,
 ) -> None:
@@ -420,8 +422,20 @@ def evaluate_links(
         if not is_canonical or final_url in state.seen_urls:
             continue
 
-        verdict = classify_link(anchor, final_url, parent_relevance, parent_host, child_depth)
         host = normalize_host(urlparse(final_url).hostname)
+        verdict = classify_link(
+            link_critic,
+            anchor=anchor,
+            target_url=final_url,
+            target_host=host,
+            target_depth=child_depth,
+            parent_url=current_url,
+            parent_host=parent_host,
+            parent_depth=depth,
+            parent_relevance=parent_relevance,
+            parent_score=parent_pageverdict.score,
+            parent_decision=parent_pageverdict.decision or "",
+        )
         should_enqueue = verdict.enqueue and not _host_at_cap(
             host_counts, max_pages_per_host, host
         )
@@ -436,7 +450,7 @@ def evaluate_links(
                 target_host=host,
                 target_depth=child_depth,
                 anchor=anchor,
-                raw_score=verdict.score,
+                raw_score=verdict.frontier_score,
                 should_enqueue=should_enqueue,
                 selected=should_enqueue,
                 rejection_reason=None if should_enqueue else "not_enqueued",
@@ -445,7 +459,7 @@ def evaluate_links(
         if should_enqueue:
             push_frontier(
                 state,
-                verdict.score,
+                verdict.frontier_score,
                 final_url,
                 child_depth,
                 saved_urls_by_host=host_counts,

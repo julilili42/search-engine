@@ -47,6 +47,23 @@ class FakePagePredictor:
         )
 
 
+class FakeLinkPredictor:
+    # with no fixed probability, mimics the crawl intent: Tübingen links score high
+    def __init__(self, probability: float | None = None) -> None:
+        self.probability = probability
+
+    def predict(self, example):
+        prob = self.probability
+        if prob is None:
+            text = f"{example.anchor} {example.target_url}".lower()
+            prob = 0.9 if ("tübingen" in text or "tuebingen" in text) else 0.1
+        return VerdictPrediction(
+            label="positive" if prob >= 0.5 else "negative",
+            positive_probability=prob,
+            model_path=Path("fake_link_verdict.joblib"),
+        )
+
+
 @pytest.fixture
 def requested_paths():
     return []
@@ -109,9 +126,11 @@ def run_crawl(
     host_counts=None,
     max_pages_per_host=None,
     page_critic=None,
+    link_critic=None,
     **site_overrides,
 ):
     page_critic = page_critic or FakePagePredictor()
+    link_critic = link_critic or FakeLinkPredictor()
     if link_store is None:
         with LinkStore(tmp_path / "pages.sqlite") as generated_link_store:
             return run_crawl(
@@ -123,6 +142,7 @@ def run_crawl(
                 host_counts=host_counts,
                 max_pages_per_host=max_pages_per_host,
                 page_critic=page_critic,
+                link_critic=link_critic,
                 **site_overrides,
             )
 
@@ -139,6 +159,7 @@ def run_crawl(
         host_counts=host_counts,
         max_pages_per_host=max_pages_per_host,
         page_critic=page_critic,
+        link_critic=link_critic,
     ).run()
 
 
@@ -265,6 +286,7 @@ def test_evaluate_links_skips_enqueue_for_capped_host():
         parent_host="host",
         host_counts=host_counts,
         max_pages_per_host=5,
+        link_critic=FakeLinkPredictor(0.9),
     )
 
     assert state.frontier == []
@@ -284,6 +306,7 @@ def test_evaluate_links_enqueues_below_cap():
         parent_host="host",
         host_counts=host_counts,
         max_pages_per_host=5,
+        link_critic=FakeLinkPredictor(0.9),
     )
 
     assert len(state.frontier) == 1
@@ -302,6 +325,7 @@ def test_evaluate_links_records_link_candidates(tmp_path):
             parent_host="host",
             host_counts={},
             max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.9),
             link_store=link_store,
         )
 
@@ -318,6 +342,7 @@ def test_evaluate_links_records_link_candidates(tmp_path):
 def test_evaluate_links_passes_saved_host_counts_to_frontier():
     state = CrawlState()
     host_counts = {"host": 3}
+    critic = FakeLinkPredictor(0.9)
 
     evaluate_links(
         state=state,
@@ -328,10 +353,23 @@ def test_evaluate_links_passes_saved_host_counts_to_frontier():
         parent_host="host",
         host_counts=host_counts,
         max_pages_per_host=5,
+        link_critic=critic,
     )
 
-    verdict = classify_link("Tübingen", "https://host/a", 5.0, "host", depth=1)
-    expected_score = verdict.score - 0.7 * 1 - 0.9 * math.log1p(3)
+    verdict = classify_link(
+        critic,
+        anchor="Tübingen",
+        target_url="https://host/a",
+        target_host="host",
+        target_depth=1,
+        parent_url="https://host/",
+        parent_host="host",
+        parent_depth=0,
+        parent_relevance=5.0,
+        parent_score=None,
+        parent_decision="",
+    )
+    expected_score = verdict.frontier_score - 0.7 * 1 - 0.9 * math.log1p(3)
     assert state.frontier[0].heap_priority == pytest.approx(-expected_score)
 
 
