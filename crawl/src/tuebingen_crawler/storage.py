@@ -47,12 +47,15 @@ def load_robots(client: httpx.Client, site: CrawlSite) -> RobotFileParser:
 
     try:
         response = client.get(robots_url, timeout=5.0, follow_redirects=True)
-        if response.status_code == 404:
+        if response.is_success:
+            parser.parse(response.text.splitlines())
+        else:
+            logger.warning(
+                "robots.txt for %s returned %s; allowing all",
+                site.url,
+                response.status_code,
+            )
             parser.parse([])
-            return parser
-
-        response.raise_for_status()
-        parser.parse(response.text.splitlines())
         return parser
 
     except httpx.RequestError as exc:

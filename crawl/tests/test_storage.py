@@ -1,16 +1,45 @@
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
-from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
+from tuebingen_crawler.models import CrawlSite, CrawlState, FrontierEntry, Statistics
 from tuebingen_crawler.storage import (
     generate_state_path,
     load_or_create_state,
+    load_robots,
+    load_seed_toml,
     load_state,
     save_html,
     save_state,
 )
+
+
+def test_load_seed_toml_parses_round_robin_weight_and_defaults_to_one(tmp_path):
+    seeds = tmp_path / "seeds.toml"
+    seeds.write_text(
+        '[[sites]]\nurl = "https://a.example/"\nround_robin_weight = 3\n\n'
+        '[[sites]]\nurl = "https://b.example/"\n',
+        encoding="utf-8",
+    )
+
+    sites = load_seed_toml(seeds)
+
+    assert [s.url for s in sites] == ["https://a.example/", "https://b.example/"]
+    assert sites[0].round_robin_weight == 3
+    assert sites[1].round_robin_weight == 1  # default when omitted
+
+
+@pytest.mark.parametrize("status_code", [403, 500])
+def test_load_robots_allows_all_when_robots_txt_is_unavailable(status_code):
+    def handler(request):
+        return httpx.Response(status_code, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        parser = load_robots(client, CrawlSite(url="https://host/"))
+
+    assert parser.can_fetch("*", "https://host/private")
 
 
 def test_generate_state_path_is_deterministic(tmp_path):
