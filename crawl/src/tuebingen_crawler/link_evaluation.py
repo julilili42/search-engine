@@ -3,16 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from .frontier import _host_at_cap, _host_off_topic_exhausted, push_frontier
+from .frontier import (
+    ENQUEUE_FLOOR,
+    LINK_SCORE_WEIGHT,
+    MAX_DEPTH,
+    saved_host_at_cap,
+    host_reject_budget_exhausted,
+    push_frontier,
+)
 from .link_classifier import LinkVerdict, classify_link
 from .models import CrawlState
 from .save_pages import LinkCandidateRecord, LinkStore, PageVerdictMetadata
 from .urls import canonical_url, normalize_host
 from verdict_ml.link.predict import LinkVerdictPredictor
 
-# per page, cap links from the same URL family, no flooding of near-identical links
-MAX_LINKS_PER_URL_FAMILY_PER_PAGE = 3
-MAX_LINKS_PER_HOST_PER_PAGE = 8
+# per-page selection budgets
+MAX_SELECTED_LINKS_PER_URL_FAMILY = 3
+MAX_SELECTED_LINKS_PER_TARGET_HOST = 8
 
 _LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
 
@@ -27,7 +34,8 @@ class _LinkContext:
     parent_pageverdict: PageVerdictMetadata
 
 
-# group url by host and website path segement, language prefix is transparent
+# link grouping
+# group url by host and website path segment, language prefix is transparent
 # /en/news/a      => ("example.com", "en", "news")
 # /en/news/b      => ("example.com", "en", "news")
 # en is ignored and both urls are in the same url family
@@ -42,6 +50,20 @@ def _url_family(url: str) -> tuple[str, str, str]:
     return host, first, ""
 
 
+# frontier admission
+def _frontier_score(verdict: LinkVerdict) -> float:
+    return LINK_SCORE_WEIGHT * verdict.score
+
+
+def _can_enter_frontier(verdict: LinkVerdict) -> bool:
+    return (
+        not verdict.skipable
+        and verdict.score >= ENQUEUE_FLOOR
+        and verdict.depth <= MAX_DEPTH
+    )
+
+
+# record building
 def _link_record(
     ctx: _LinkContext, verdict: LinkVerdict, anchor: str, *, selected: bool, reason: str | None
 ) -> LinkCandidateRecord:
@@ -55,7 +77,7 @@ def _link_record(
         target_host=normalize_host(urlparse(verdict.url).hostname),
         target_depth=ctx.child_depth,
         anchor=anchor,
-        raw_score=verdict.frontier_score,
+        raw_score=_frontier_score(verdict),
         # skipped links never reached the model, verdict is empty
         linkverdict_score=None if verdict.skipable else verdict.score,
         linkverdict_label=None if verdict.skipable else verdict.label,
@@ -66,7 +88,7 @@ def _link_record(
     )
 
 
-# classifies each link; returns the enqueueable candidates plus the records for
+# candidate filtering
 def _classify_candidates(
     ctx: _LinkContext,
     links: list[tuple[str, str]],
@@ -97,16 +119,18 @@ def _classify_candidates(
             parent_score=ctx.parent_pageverdict.score,
             parent_decision=ctx.parent_pageverdict.decision or "",
         )
-        if not verdict.enqueue or _host_at_cap(host_counts, max_pages_per_host, host):
+        if not _can_enter_frontier(verdict) or saved_host_at_cap(
+            host_counts, max_pages_per_host, host
+        ):
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="not_enqueued"))
-        elif _host_off_topic_exhausted(host_counts, host_reject_counts, host):
+        elif host_reject_budget_exhausted(host_counts, host_reject_counts, host):
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="host_off_topic"))
         else:
             candidates.append((verdict, anchor))
     return candidates, records
 
 
-# enqueues the best-scoring candidates first
+# per-page selection
 def _enqueue_with_page_caps(
     ctx: _LinkContext,
     state: CrawlState,
@@ -114,37 +138,37 @@ def _enqueue_with_page_caps(
     host_counts: dict[str, int],
 ) -> list[LinkCandidateRecord]:
     records: list[LinkCandidateRecord] = []
-    host_selected: dict[str, int] = {}
-    family_selected: dict[tuple[str, str, str], int] = {}
+    selected_links_by_host: dict[str, int] = {}
+    selected_links_by_family: dict[tuple[str, str, str], int] = {}
     for verdict, anchor in sorted(
-        candidates, key=lambda item: item[0].frontier_score, reverse=True
+        candidates, key=lambda item: _frontier_score(item[0]), reverse=True
     ):
         host = normalize_host(urlparse(verdict.url).hostname)
-        if host_selected.get(host, 0) >= MAX_LINKS_PER_HOST_PER_PAGE:
+        if selected_links_by_host.get(host, 0) >= MAX_SELECTED_LINKS_PER_TARGET_HOST:
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_host_budget"))
             continue
 
         family = _url_family(verdict.url)
-        if family_selected.get(family, 0) >= MAX_LINKS_PER_URL_FAMILY_PER_PAGE:
+        if selected_links_by_family.get(family, 0) >= MAX_SELECTED_LINKS_PER_URL_FAMILY:
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_family_budget"))
             continue
 
         push_frontier(
             state,
-            verdict.frontier_score,
+            _frontier_score(verdict),
             verdict.url,
             ctx.child_depth,
             saved_urls_by_host=host_counts,
         )
         # only mark URLs we actually enqueued as seen
         state.seen_urls.add(verdict.url)
-        host_selected[host] = host_selected.get(host, 0) + 1
-        family_selected[family] = family_selected.get(family, 0) + 1
+        selected_links_by_host[host] = selected_links_by_host.get(host, 0) + 1
+        selected_links_by_family[family] = selected_links_by_family.get(family, 0) + 1
         records.append(_link_record(ctx, verdict, anchor, selected=True, reason=None))
     return records
 
 
-# classify a page's links and add the relevant ones to the frontier
+# public entrypoint
 def evaluate_links(
     state: CrawlState,
     links: list[tuple[str, str]],

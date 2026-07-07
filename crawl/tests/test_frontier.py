@@ -1,7 +1,7 @@
 import math
 
 from tuebingen_crawler.frontier import (
-    FrontierQueueConfig,
+    host_reject_budget_exhausted,
     _pop_priority_score,
     _push_priority_score,
     _remember_host,
@@ -23,6 +23,25 @@ def test_count_frontier_hosts_normalizes_hosts():
         "example.org": 2,
         "other.org": 1,
     }
+
+
+def test_host_reject_budget_exhausted_blocks_host_without_saves():
+    assert host_reject_budget_exhausted({}, {"junk.org": 6}, "junk.org")
+    assert not host_reject_budget_exhausted({}, {"junk.org": 5}, "junk.org")
+
+
+def test_host_reject_budget_exhausted_allows_productive_host():
+    # ~3 rejects per save is normal for good hosts
+    assert not host_reject_budget_exhausted(
+        {"uni.example": 50}, {"uni.example": 150}, "uni.example"
+    )
+
+
+def test_host_reject_budget_exhausted_blocks_drifting_host_despite_saves():
+    # saves no longer grant immunity: rejects beyond host_reject_ratio x saves cut the host off
+    assert host_reject_budget_exhausted(
+        {"aggregator.example": 50}, {"aggregator.example": 500}, "aggregator.example"
+    )
 
 
 def test_push_priority_score_penalizes_depth_and_host_saturation():
@@ -82,9 +101,8 @@ def test_remember_host_tracks_recent_pop_hosts():
 
 def test_remember_host_keeps_recent_window():
     state = CrawlState(recent_pop_hosts=["a.org", "b.org"])
-    config = FrontierQueueConfig(recent_host_window=2)
 
-    _remember_host(state, "https://c.org/", config=config)
+    _remember_host(state, "https://c.org/", recent_host_window=2)
 
     assert state.recent_pop_hosts == ["b.org", "c.org"]
 
@@ -98,9 +116,7 @@ def test_pop_frontier_uses_recent_host_penalty_within_window():
         recent_pop_hosts=["a.org", "a.org"],
         queued_urls_by_host={"a.org": 1, "b.org": 1},
     )
-    config = FrontierQueueConfig(pop_window=2)
-
-    assert pop_frontier(state, config=config) == ("https://b.org/lower", 1)
+    assert pop_frontier(state, pop_window=2) == ("https://b.org/lower", 1)
     assert state.frontier == [FrontierEntry(-10.0, 1, "https://a.org/high", 1)]
     assert state.queued_urls_by_host == {"a.org": 1}
     assert state.recent_pop_hosts[-1] == "b.org"

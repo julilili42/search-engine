@@ -1,11 +1,6 @@
 from pathlib import Path
 
-from tuebingen_crawler.link_classifier import (
-    FRONTIER_CONFIG,
-    LinkVerdict,
-    classify_link,
-    predict_link,
-)
+from tuebingen_crawler.link_classifier import classify_link, predict_link
 from verdict_ml.base import VerdictPrediction
 
 
@@ -40,41 +35,6 @@ def _classify(predictor, *, url, anchor="Tübingen", depth=1):
     )
 
 
-def test_link_verdict_enqueue_respects_floor_and_depth():
-    assert LinkVerdict(
-        url="https://host/a",
-        depth=FRONTIER_CONFIG.max_depth,
-        score=FRONTIER_CONFIG.enqueue_floor,
-        label="positive",
-        model="m",
-        skipable=False,
-    ).enqueue
-    assert not LinkVerdict(
-        url="https://host/a",
-        depth=1,
-        score=FRONTIER_CONFIG.enqueue_floor - 0.01,
-        label="negative",
-        model="m",
-        skipable=False,
-    ).enqueue
-    assert not LinkVerdict(
-        url="https://host/a",
-        depth=FRONTIER_CONFIG.max_depth + 1,
-        score=0.99,
-        label="positive",
-        model="m",
-        skipable=False,
-    ).enqueue
-    assert not LinkVerdict(
-        url="https://host/a",
-        depth=1,
-        score=0.99,
-        label="positive",
-        model="m",
-        skipable=True,
-    ).enqueue
-
-
 def test_predict_link_builds_model_input():
     predictor = FakeLinkPredictor(0.7)
 
@@ -107,13 +67,13 @@ def test_classify_link_enqueues_confident_link():
 
     assert verdict.score == 0.9
     assert verdict.label == "positive"
-    assert verdict.enqueue
 
 
-def test_classify_link_rejects_low_confidence_link():
-    verdict = _classify(FakeLinkPredictor(0.1, "negative"), url="https://host/random")
+def test_classify_link_returns_low_scoring_link_verdict():
+    verdict = _classify(FakeLinkPredictor(0.01, "negative"), url="https://host/random")
 
-    assert not verdict.enqueue
+    assert verdict.score == 0.01
+    assert verdict.label == "negative"
 
 
 def test_classify_link_skips_resource_url_without_calling_model():
@@ -121,16 +81,15 @@ def test_classify_link_skips_resource_url_without_calling_model():
     verdict = _classify(predictor, url="https://host/image.jpg")
 
     assert verdict.skipable
-    assert not verdict.enqueue
     assert predictor.seen == []  # hard skip filter short-circuits before the model
 
 
-def test_classify_link_rejects_too_deep_link():
+def test_classify_link_preserves_depth():
     verdict = _classify(
         FakeLinkPredictor(0.99),
         url="https://host/tuebingen-attractions",
-        depth=FRONTIER_CONFIG.max_depth + 1,
+        depth=99,
     )
 
     assert verdict.score == 0.99
-    assert not verdict.enqueue
+    assert verdict.depth == 99

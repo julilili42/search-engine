@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
+from .frontier import MAX_SAVED_PAGES_PER_HOST
 from .report import report_main
 from .scheduler import crawl_hostname
 from .storage import load_seed_toml
@@ -15,10 +16,6 @@ from .paths import DEFAULT_DATA_DIR, DEFAULT_DB_PATH, DEFAULT_SEED_PATH
 from .verdict_models import load_verdict_models
 
 logger = logging.getLogger(__name__)
-
-# cap saved pages per host
-MAX_PAGES_PER_HOST = 60
-
 
 def run_crawl() -> None:
     logging.basicConfig(
@@ -35,7 +32,7 @@ def run_crawl() -> None:
     config = Config(
         sites=sites,
         save_dir=DEFAULT_DATA_DIR,
-        max_pages_per_host=MAX_PAGES_PER_HOST,
+        max_pages_per_host=MAX_SAVED_PAGES_PER_HOST,
     )
     try:
         verdict_models = load_verdict_models()

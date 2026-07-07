@@ -7,19 +7,6 @@ from verdict_ml.link.predict import LinkVerdictPrediction, LinkVerdictPredictor
 
 
 @dataclass(frozen=True)
-class FrontierConfig:
-    # a link is enqueued once the model is at least this confident
-    enqueue_floor: float = 0.35
-    max_depth: int = 5
-
-    def within_depth(self, depth: int) -> bool:
-        return depth <= self.max_depth
-
-
-FRONTIER_CONFIG = FrontierConfig()
-
-
-@dataclass(frozen=True)
 class LinkVerdict:
     url: str
     depth: int
@@ -27,21 +14,6 @@ class LinkVerdict:
     label: str
     model: str
     skipable: bool
-
-    @property
-    def frontier_score(self) -> float:
-        # lift the 0..1 probability onto the same scale as the frontier's
-        # depth/host penalties so model confidence still drives ordering
-        return 10.0 * self.score
-
-    @property
-    def enqueue(self) -> bool:
-        return (
-            not self.skipable
-            and self.score >= FRONTIER_CONFIG.enqueue_floor
-            and FRONTIER_CONFIG.within_depth(self.depth)
-        )
-
 
 def predict_link(
     predictor: LinkVerdictPredictor,
