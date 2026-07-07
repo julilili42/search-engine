@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -154,12 +155,16 @@ class LinkCandidateRecord:
     rejection_reason: str | None = None
 
 
+# crawl threads share the stores; one lock serializes writes to the sqlite file
+_DB_LOCK = threading.Lock()
+
+
 # used to store informations PageRecord about crawled pages in sqlite database
 class PageStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.con = sqlite3.connect(self.db_path)
+        self.con = sqlite3.connect(self.db_path, check_same_thread=False)
         self.con.row_factory = sqlite3.Row
 
         self.con.execute("PRAGMA journal_mode=WAL")
@@ -301,7 +306,7 @@ class PageStore:
         now = self._now()
         fetched_at = fetched_at or now
 
-        with self.con:
+        with _DB_LOCK, self.con:
             self.con.execute(
                 """
                 INSERT INTO pages (
@@ -389,7 +394,7 @@ class PageStore:
         now = self._now()
         fetched_at = fetched_at or now
 
-        with self.con:
+        with _DB_LOCK, self.con:
             self.con.execute(
                 """
                 INSERT INTO rejected_pages (
@@ -525,7 +530,7 @@ class LinkStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.con = sqlite3.connect(self.db_path)
+        self.con = sqlite3.connect(self.db_path, check_same_thread=False)
         self.con.row_factory = sqlite3.Row
 
         self.con.execute("PRAGMA journal_mode=WAL")
@@ -620,7 +625,7 @@ class LinkStore:
             return
 
         now = self._now()
-        with self.con:
+        with _DB_LOCK, self.con:
             for record in records:
                 self.con.execute(
                     """
@@ -709,7 +714,7 @@ class LinkStore:
         exclusion_reason: str | None,
         fetched_at: str | None,
     ) -> None:
-        with self.con:
+        with _DB_LOCK, self.con:
             self.con.execute(
                 """
                 UPDATE link_candidates

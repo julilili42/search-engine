@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,10 @@ from .storage import save_html
 from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
+
+# seen_texts is shared across crawl threads; is_near_duplicate iterates it, so
+# check-and-add must be atomic
+_SEEN_TEXTS_LOCK = threading.Lock()
 
 
 def _now() -> str:
@@ -268,7 +273,11 @@ def evaluate_page(
     if verdict.should_index:
         # avoids recrawling the same content
         fingerprint = simhash(page.text)
-        if page.text and is_near_duplicate(fingerprint, seen_texts):
+        with _SEEN_TEXTS_LOCK:
+            duplicate = is_near_duplicate(fingerprint, seen_texts)
+            if not duplicate:
+                seen_texts.add(fingerprint)
+        if duplicate:
             logger.info("Skipping duplicate text: %s", current_url)
             reject_page(
                 page_store=page_store,
@@ -286,7 +295,6 @@ def evaluate_page(
                 link_store=link_store,
             )
             return None
-        seen_texts.add(fingerprint)
 
         if not save_page(
             page_store=page_store,

@@ -11,9 +11,6 @@ class Language(StrEnum):
     DE = "de"
     UNKNOWN = "unknown"
 
-# score at which a page is relevant
-REL_THRESHOLD = 3.0
-
 @dataclass
 class FetchResult:
     body: bytes | None
@@ -54,8 +51,6 @@ class CrawlSite(BaseModel):
     retry_delay: float = 10.0
     request_delay: float = 0.01
     retries: int = Field(default=2, ge=1)
-    # pages per scheduler round: 1 = neutral.
-    round_robin_weight: int = Field(default=1, ge=1)
 
 @dataclass(order=True)
 class FrontierEntry:
