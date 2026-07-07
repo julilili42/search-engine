@@ -78,7 +78,7 @@ def load_bundle(path: Path) -> dict[str, object]:
     if not path.exists():
         raise FileNotFoundError(
             f"Verdict model artifact not found: {path}. Train it first with "
-            "`uv run verdict-ml-train-page` or `uv run verdict-ml-train-link`, "
+            "`uv run verdict-train page` or `uv run verdict-train link`, "
             "or pass an explicit model path."
         )
     bundle = joblib.load(path)

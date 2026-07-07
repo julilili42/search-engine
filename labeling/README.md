@@ -7,7 +7,7 @@ Data is stored in `labeling/data/labeling.sqlite`.
 Run the UI:
 
 ```bash
-uv run tuebingen-labeling
+uv run labeling
 ```
 
 ```text
@@ -23,8 +23,8 @@ export SERPER_API_KEY="..."
 Import crawler candidates:
 
 ```bash
-uv run tuebingen-export-pageverdict
-uv run tuebingen-export-link-candidates
+uv run export-pageverdict
+uv run export-link-candidates
 ```
 
 Then import in the UI:

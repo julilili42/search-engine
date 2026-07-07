@@ -10,8 +10,6 @@ dependencies = [
 
 [project.scripts]
 verdict-train = "verdict_ml.train:main"
-verdict-ml-train-page = "verdict_ml.page.train:main"
-verdict-ml-train-link = "verdict_ml.link.train:main"
 
 [dependency-groups]
 dev = [

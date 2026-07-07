@@ -9,9 +9,9 @@ dependencies = [
 ]
 
 [project.scripts]
-tuebingen-labeling = "tuebingen_labeling.server:main"
-tuebingen-export-link-candidates = "tuebingen_labeling.export.link_candidates:main"
-tuebingen-export-pageverdict = "tuebingen_labeling.export.pageverdict:main"
+labeling = "tuebingen_labeling.server:main"
+export-link-candidates = "tuebingen_labeling.export.link_candidates:main"
+export-pageverdict = "tuebingen_labeling.export.pageverdict:main"
 
 [tool.uv.sources]
 crawler = { workspace = true }

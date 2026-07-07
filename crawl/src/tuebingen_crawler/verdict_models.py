@@ -31,7 +31,7 @@ def _load_page_model() -> PageVerdictPredictor:
     if not DEFAULT_PAGE_MODEL_PATH.exists():
         raise FileNotFoundError(
             f"Required PageVerdict model artifact not found: {DEFAULT_PAGE_MODEL_PATH}. "
-            "Train it first with `uv run verdict-ml-train-page`."
+            "Train it first with `uv run verdict-train page`."
         )
 
     logger.info("Using PageVerdict model: %s", DEFAULT_PAGE_MODEL_PATH)
@@ -42,7 +42,7 @@ def _load_link_model() -> LinkVerdictPredictor:
     if not DEFAULT_LINK_MODEL_PATH.exists():
         raise FileNotFoundError(
             f"Required LinkVerdict model artifact not found: {DEFAULT_LINK_MODEL_PATH}. "
-            "Train it first with `uv run verdict-ml-train-link`."
+            "Train it first with `uv run verdict-train link`."
         )
 
     logger.info("Using LinkVerdict model: %s", DEFAULT_LINK_MODEL_PATH)
