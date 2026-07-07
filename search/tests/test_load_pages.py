@@ -22,6 +22,48 @@ def test_page_load_reads_saved_page_metadata(tmp_path):
     assert page.token_count == 100
 
 
+def test_iter_html_pages_skips_low_relevance_pages(tmp_path):
+    site_dir = tmp_path / "html"
+    site_dir.mkdir()
+    path = site_dir / "page.html"
+    path.write_text("<html></html>", encoding="utf-8")
+
+    db_path = tmp_path / "pages.sqlite"
+    pages_db = make_page_load(db_path, {path: "text/html"})
+
+    con = sqlite3.connect(db_path)
+    con.execute(
+        "UPDATE pages SET relevance = 3.0 WHERE url = ?",
+        ("https://example.test/page.html",),
+    )
+    con.commit()
+    con.close()
+
+    assert list(pages_db.iter_html_pages()) == []
+    # below-threshold pages stay reachable by path (debug lookups)
+    assert pages_db.get_page_by_file_path(path) is not None
+
+
+def test_iter_html_pages_uses_stricter_noisy_host_threshold(tmp_path):
+    site_dir = tmp_path / "html"
+    site_dir.mkdir()
+    path = site_dir / "page.html"
+    path.write_text("<html></html>", encoding="utf-8")
+
+    db_path = tmp_path / "pages.sqlite"
+    pages_db = make_page_load(db_path, {path: "text/html"})
+
+    con = sqlite3.connect(db_path)
+    con.execute(
+        "UPDATE pages SET host = ?, relevance = ? WHERE url = ?",
+        ("komoot.com", 4.9, "https://example.test/page.html"),
+    )
+    con.commit()
+    con.close()
+
+    assert list(pages_db.iter_html_pages()) == []
+
+
 def test_page_load_ignores_rejected_pages_table(tmp_path):
     site_dir = tmp_path / "html"
     site_dir.mkdir()
