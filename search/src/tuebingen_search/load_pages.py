@@ -65,14 +65,26 @@ class PageLoad:
         self.con = sqlite3.connect(self.db_path)
         self.con.row_factory = sqlite3.Row
 
-    @staticmethod
-    def _row_to_page(row: sqlite3.Row) -> PageRecord:
+    def _resolve_page_path(self, path: Path) -> Path:
+        if path.exists():
+            return path
+
+        parts = path.parts
+        if "data" in parts:
+            data_index = parts.index("data")
+            relocated = self.db_path.parent.joinpath(*parts[data_index + 1:])
+            if relocated.exists():
+                return relocated
+
+        return path
+
+    def _row_to_page(self, row: sqlite3.Row) -> PageRecord:
         path = row["path"]
         return PageRecord(
             title=row["title"],
             url=row["url"],
             host=row["host"],
-            path=Path(path) if path is not None else None,
+            path=self._resolve_page_path(Path(path)) if path is not None else None,
             status_code=row["status_code"],
             content_type=row["content_type"],
             crawl_depth=row["crawl_depth"],

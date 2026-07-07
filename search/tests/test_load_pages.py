@@ -22,6 +22,27 @@ def test_page_load_reads_saved_page_metadata(tmp_path):
     assert page.token_count == 100
 
 
+def test_page_load_resolves_paths_after_project_move(tmp_path):
+    data_dir = tmp_path / "data"
+    site_dir = data_dir / "example.test"
+    site_dir.mkdir(parents=True)
+    path = site_dir / "page.html"
+    path.write_text("<html></html>", encoding="utf-8")
+
+    old_path = (
+        tmp_path
+        / "old-project"
+        / "data"
+        / "example.test"
+        / "page.html"
+    )
+    pages_db = make_page_load(data_dir / "pages.sqlite", {old_path: "text/html"})
+
+    [page] = list(pages_db.iter_html_pages())
+
+    assert page.path == path
+
+
 def test_iter_html_pages_skips_low_relevance_pages(tmp_path):
     site_dir = tmp_path / "html"
     site_dir.mkdir()
