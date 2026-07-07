@@ -89,10 +89,10 @@ function App() {
 
       <div className="flex flex-col gap-3">
         {results.map((result) => (
-          <Card key={`${result.rank}-${result.path}`}>
+          <Card key={`${result.rank}-${result.path}`} className="overflow-hidden">
             <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2">
-                <span className="truncate">
+              <CardTitle className="flex min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate">
                   {result.rank}.{" "}
                   {result.url ? (
                     <a
@@ -112,9 +112,9 @@ function App() {
                 </span>
               </CardTitle>
               {result.url && (
-                <CardDescription className="flex items-center gap-1 truncate">
+                <CardDescription className="flex min-w-0 items-center gap-1">
                   <ExternalLink className="size-3 shrink-0" />
-                  {result.path}
+                  <span className="min-w-0 truncate">{result.path}</span>
                 </CardDescription>
               )}
             </CardHeader>
