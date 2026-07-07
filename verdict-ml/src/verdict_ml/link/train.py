@@ -123,7 +123,14 @@ def load_outcome_examples(db_path: Path, *, max_per_target: int = 3) -> list[Exa
                    parent_relevance, anchor, target_url, target_host,
                    target_depth, raw_score, target_status
             FROM link_candidates
-            WHERE target_status IN ('page', 'rejected')
+            WHERE target_status = 'page'
+               OR (
+                    target_status = 'rejected'
+                    -- duplicate_text rejects pointed at content the page model
+                    -- liked; labeling them negative would teach the ranker to
+                    -- avoid good links
+                    AND COALESCE(target_exclusion_reason, '') != 'duplicate_text'
+               )
             ORDER BY target_url, id
             """
         ).fetchall()
