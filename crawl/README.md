@@ -22,14 +22,25 @@ uv run crawl report --db data/pages.sqlite
 
 - Seeds live in `crawl/seeds.toml`.
 - Each `[[sites]]` entry supports `url`, `request_delay`, optional
-  `max_pages_per_seed`, and optional `round_robin_weight` (default `1`).
-- Seeds are crawled with weighted round-robin scheduling, so no single seed
-  frontier monopolizes the crawl. Higher `round_robin_weight` gives a seed more
-  pages per scheduler round.
+  `max_pages_per_seed`.
+- Seeds are crawled in parallel, one worker per seed, so no single seed
+  frontier monopolizes the crawl.
 - HTML is saved under `data/<host>/`; per-seed state is saved under
   `data/state/`; page and link metadata is recorded in `data/pages.sqlite`.
 - Saved pages are capped per host, and hosts with repeated rejects and no saved
   pages are stopped early.
+
+## Crawler Flow
+
+1. `main.py` loads seeds, models, stores, and crawl config.
+2. `scheduler.py` creates one `CrawlRun` per seed and runs them in parallel.
+3. `crawler.py` pops URLs from a run's frontier, checks host budgets and
+   `robots.txt`, then fetches pages.
+4. `page_evaluation.py` parses, classifies, saves, or rejects pages.
+5. `link_evaluation.py` classifies links from saved pages and selects which
+   links enter the frontier.
+6. `frontier.py` owns frontier priority, global saved-page caps, and host reject
+   budgets.
 
 ## Stored Metadata
 
