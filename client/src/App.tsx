@@ -19,6 +19,19 @@ type SearchResult = {
   snippet: string
 }
 
+function displayUrl(result: SearchResult) {
+  return result.url ?? result.path
+}
+
+function displayHost(result: SearchResult) {
+  if (!result.url) return "local file"
+  try {
+    return new URL(result.url).hostname.replace(/^www\./, "")
+  } catch {
+    return result.url
+  }
+}
+
 function App() {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
@@ -55,9 +68,6 @@ function App() {
         <h1 className="text-2xl font-semibold tracking-tight">
           Tübingen Search
         </h1>
-        <p className="text-muted-foreground text-sm">
-          Searches the local index via the <code>/search</code> endpoint.
-        </p>
       </header>
 
       <form onSubmit={handleSearch} className="flex gap-2">
@@ -93,30 +103,27 @@ function App() {
             <CardHeader>
               <CardTitle className="flex min-w-0 items-center justify-between gap-2">
                 <span className="min-w-0 truncate">
-                  {result.rank}.{" "}
-                  {result.url ? (
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:underline"
-                    >
-                      {result.url}
-                    </a>
-                  ) : (
-                    result.path
-                  )}
+                  {result.rank}. {displayHost(result)}
                 </span>
                 <span className="text-muted-foreground shrink-0 text-xs font-normal">
                   score {result.score.toFixed(3)}
                 </span>
               </CardTitle>
-              {result.url && (
-                <CardDescription className="flex min-w-0 items-center gap-1">
-                  <ExternalLink className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{result.path}</span>
-                </CardDescription>
-              )}
+              <CardDescription className="flex min-w-0 items-center gap-1">
+                <ExternalLink className="size-3 shrink-0" />
+                {result.url ? (
+                  <a
+                    href={result.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 truncate hover:underline"
+                  >
+                    {displayUrl(result)}
+                  </a>
+                ) : (
+                  <span className="min-w-0 truncate">{displayUrl(result)}</span>
+                )}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-relaxed">{result.snippet}</p>
