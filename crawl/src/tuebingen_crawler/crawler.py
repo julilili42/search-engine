@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 import httpx
-from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse
 from pathlib import Path
 
 from .models import CrawlState, CrawlSite
 from .storage import (
+    RobotsCache,
     generate_state_path,
     load_or_create_state,
     save_state,
@@ -15,7 +15,7 @@ from .storage import (
 )
 from .urls import validate_start_url, normalize_host
 from .fetcher import fetch_page
-from .frontier import pop_frontier, _host_at_cap, _host_off_topic_exhausted
+from .frontier import saved_host_at_cap, host_reject_budget_exhausted, pop_frontier
 from .page_evaluation import evaluate_page
 from .link_evaluation import evaluate_links
 from .save_pages import LinkStore, PageStore
@@ -34,7 +34,7 @@ class CrawlRun:
         save_dir: Path,
         save_state_every: int,
         page_store: PageStore,
-        robot_parser: RobotFileParser,
+        robots: RobotsCache,
         user_agent: str,
         link_store: LinkStore,
         seen_urls: set[str] | None = None,
@@ -51,7 +51,7 @@ class CrawlRun:
         self.save_state_every = save_state_every
         self.page_store = page_store
         self.link_store = link_store
-        self.robot_parser = robot_parser
+        self.robots = robots
         self.user_agent = user_agent
         self.seen_urls = seen_urls if seen_urls is not None else set()
         self.seen_texts = seen_texts if seen_texts is not None else set()
@@ -112,12 +112,12 @@ class CrawlRun:
         self.state.statistics.discovered += 1
 
         hostname = normalize_host(urlparse(current_url).hostname)
-        if _host_at_cap(self.host_counts, self.max_pages_per_host, hostname):
+        if saved_host_at_cap(self.host_counts, self.max_pages_per_host, hostname):
             return
-        if _host_off_topic_exhausted(self.host_counts, self.host_reject_counts, hostname):
+        if host_reject_budget_exhausted(self.host_counts, self.host_reject_counts, hostname):
             return
 
-        if not self.robot_parser.can_fetch(self.user_agent, current_url):
+        if not self.robots.can_fetch(self.user_agent, current_url):
             logger.debug("Skipping disallowed URL: %s", current_url)
             self.state.statistics.failed += 1
             return

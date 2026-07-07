@@ -4,8 +4,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from tuebingen_crawler.models import CrawlSite, CrawlState, FrontierEntry, Statistics
+from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
 from tuebingen_crawler.storage import (
+    RobotsCache,
     generate_state_path,
     load_or_create_state,
     load_robots,
@@ -16,10 +17,10 @@ from tuebingen_crawler.storage import (
 )
 
 
-def test_load_seed_toml_parses_round_robin_weight_and_defaults_to_one(tmp_path):
+def test_load_seed_toml_parses_sites(tmp_path):
     seeds = tmp_path / "seeds.toml"
     seeds.write_text(
-        '[[sites]]\nurl = "https://a.example/"\nround_robin_weight = 3\n\n'
+        '[[sites]]\nurl = "https://a.example/"\n\n'
         '[[sites]]\nurl = "https://b.example/"\n',
         encoding="utf-8",
     )
@@ -27,8 +28,6 @@ def test_load_seed_toml_parses_round_robin_weight_and_defaults_to_one(tmp_path):
     sites = load_seed_toml(seeds)
 
     assert [s.url for s in sites] == ["https://a.example/", "https://b.example/"]
-    assert sites[0].round_robin_weight == 3
-    assert sites[1].round_robin_weight == 1  # default when omitted
 
 
 @pytest.mark.parametrize("status_code", [403, 500])
@@ -37,9 +36,25 @@ def test_load_robots_allows_all_when_robots_txt_is_unavailable(status_code):
         return httpx.Response(status_code, request=request)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        parser = load_robots(client, CrawlSite(url="https://host/"))
+        parser = load_robots(client, "https://host/")
 
     assert parser.can_fetch("*", "https://host/private")
+
+
+def test_robots_cache_is_per_origin():
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(200, text="User-agent: *\nDisallow: /private\n", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        cache = RobotsCache(client)
+
+        assert not cache.can_fetch("*", "https://host/private")
+        assert not cache.can_fetch("*", "http://host/private")
+
+    assert requests == ["https://host/robots.txt", "http://host/robots.txt"]
 
 
 def test_generate_state_path_is_deterministic(tmp_path):

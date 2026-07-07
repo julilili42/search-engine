@@ -7,7 +7,7 @@ import pytest
 
 import tuebingen_crawler.scheduler as scheduler_module
 from tuebingen_crawler.crawler import CrawlRun
-from tuebingen_crawler.frontier import REJECT_CUTOFF
+from tuebingen_crawler.frontier import HOST_REJECT_CUTOFF, LINK_SCORE_WEIGHT
 from tuebingen_crawler.scheduler import crawl_hostname
 from tuebingen_crawler.link_evaluation import evaluate_links
 from tuebingen_crawler.link_classifier import classify_link
@@ -60,7 +60,8 @@ class FakeLinkPredictor:
         prob = self.probability
         if prob is None:
             text = f"{example.anchor} {example.target_url}".lower()
-            prob = 0.9 if ("tübingen" in text or "tuebingen" in text) else 0.1
+            # junk scores below the enqueue floor, on-topic links well above
+            prob = 0.9 if ("tübingen" in text or "tuebingen" in text) else 0.01
         return VerdictPrediction(
             label="positive" if prob >= 0.5 else "negative",
             positive_probability=prob,
@@ -159,7 +160,7 @@ def run_crawl(
         save_state_every=10,
         page_store=page_store,
         link_store=link_store,
-        robot_parser=allow_all_robots(),
+        robots=allow_all_robots(),
         user_agent="TestCrawler/1.0",
         seen_urls=seen_urls,
         host_counts=host_counts,
@@ -270,7 +271,7 @@ def test_crawl_run_skips_fetching_when_host_capped(client, tmp_path, page_store,
     assert requested_paths == []
 
 
-def test_crawl_run_skips_fetching_when_host_off_topic_exhausted(
+def test_crawl_run_skips_fetching_when_host_reject_budget_exhausted(
     client, tmp_path, page_store, requested_paths
 ):
     state = run_crawl(
@@ -278,7 +279,7 @@ def test_crawl_run_skips_fetching_when_host_off_topic_exhausted(
         tmp_path,
         page_store,
         host_counts={},
-        host_reject_counts={"host": REJECT_CUTOFF},
+        host_reject_counts={"host": HOST_REJECT_CUTOFF},
     )
 
     assert stored_urls(page_store) == []
@@ -328,7 +329,7 @@ def test_evaluate_links_skips_off_topic_exhausted_host(tmp_path):
             parent_relevance=5.0,
             parent_host="host",
             host_counts={},
-            host_reject_counts={"junk.example": REJECT_CUTOFF},
+            host_reject_counts={"junk.example": HOST_REJECT_CUTOFF},
             max_pages_per_host=None,
             link_critic=FakeLinkPredictor(0.9),
             link_store=link_store,
@@ -354,7 +355,7 @@ def test_evaluate_links_keeps_host_with_a_save_despite_many_rejects():
         parent_relevance=5.0,
         parent_host="host",
         host_counts={"good.example": 1},
-        host_reject_counts={"good.example": REJECT_CUTOFF + 1},
+        host_reject_counts={"good.example": HOST_REJECT_CUTOFF + 1},
         max_pages_per_host=None,
         link_critic=FakeLinkPredictor(0.9),
     )
@@ -456,7 +457,7 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
             "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
         ).fetchall()
 
-    # only MAX_LINKS_PER_URL_FAMILY_PER_PAGE of the five are enqueued
+    # only MAX_SELECTED_LINKS_PER_URL_FAMILY of the five are enqueued
     assert len(state.frontier) == 3
     assert sum(row["selected"] for row in rows) == 3
     capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
@@ -523,7 +524,11 @@ def test_evaluate_links_passes_saved_host_counts_to_frontier():
         parent_score=None,
         parent_decision="",
     )
-    expected_score = verdict.frontier_score - 0.7 * 1 - 0.9 * math.log1p(3)
+    expected_score = (
+        LINK_SCORE_WEIGHT * verdict.score
+        - 0.7 * 1
+        - 0.9 * math.log1p(3)
+    )
     assert state.frontier[0].heap_priority == pytest.approx(-expected_score)
 
 
@@ -536,7 +541,7 @@ def test_run_chunk_processes_at_most_max_pages(client, tmp_path, page_store):
             save_state_every=10,
             page_store=page_store,
             link_store=link_store,
-            robot_parser=allow_all_robots(),
+            robots=allow_all_robots(),
             user_agent="TestCrawler/1.0",
             page_critic=FakePagePredictor(),
             link_critic=FakeLinkPredictor(),
@@ -797,7 +802,7 @@ def _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites) -
 
 def test_crawl_hostname_interleaves_seeds(tmp_path, page_store, monkeypatch):
     # seed a has a big frontier, seed b a small one. Sequential crawling would put
-    # all of a before any of b; round-robin must let b produce pages first.
+    # all of a before any of b; parallel seed workers must let b produce pages first.
     host_trees = {
         "a.example": _build_tree("a.example"),
         "b.example": _build_small_tree("b.example"),
@@ -813,24 +818,17 @@ def test_crawl_hostname_interleaves_seeds(tmp_path, page_store, monkeypatch):
     assert min(b_positions) < max(a_positions)
 
 
-def test_crawl_hostname_weights_seed_budget(tmp_path, page_store, monkeypatch):
-    # per-page interleaving so the weight is visible in the early save order
-    monkeypatch.setattr(scheduler_module, "ROUND_ROBIN_CHUNK", 1)
+def test_crawl_hostname_crawls_all_seeds_completely(tmp_path, page_store, monkeypatch):
     host_trees = {
         "a.example": _build_tree("a.example"),
         "b.example": _build_tree("b.example"),
     }
     sites = [
-        make_site(url="https://a.example/", round_robin_weight=1),
-        make_site(url="https://b.example/", round_robin_weight=2),
+        make_site(url="https://a.example/"),
+        make_site(url="https://b.example/"),
     ]
 
     hosts_in_order = _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites)
 
-    # weight 2 => seed b gets twice the per-round budget (round = a, b, b), so b
-    # leads the early saves ...
-    first_six = hosts_in_order[:6]
-    assert first_six.count("b.example") > first_six.count("a.example")
-    # ... while both seeds are still fully crawled by the end
     assert hosts_in_order.count("a.example") == 9
     assert hosts_in_order.count("b.example") == 9

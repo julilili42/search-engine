@@ -5,9 +5,10 @@ import heapq
 import json
 import logging
 import os
+import threading
 from dataclasses import asdict
 from pathlib import Path
-from .models import CrawlState, FrontierEntry, Statistics, CrawlSite
+from .models import CrawlSite, CrawlState, FrontierEntry, Statistics
 from .urls import normalize_host, url_slug
 from .frontier import count_frontier_hosts, push_frontier
 import hashlib
@@ -33,12 +34,12 @@ def save_html(hostname: str, base_dir: Path, page_url: str, body: bytes) -> str:
     return str(path)
 
 
-# loads `robots.txt` file and returns parser
-def load_robots(client: httpx.Client, site: CrawlSite) -> RobotFileParser:
-    parsed = urlparse(site.url)
+# loads the `robots.txt` covering `url` and returns its parser
+def load_robots(client: httpx.Client, url: str) -> RobotFileParser:
+    parsed = urlparse(url)
 
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError(f"Invalid site URL: {site.url}")
+        raise ValueError(f"Invalid site URL: {url}")
 
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
 
@@ -52,16 +53,36 @@ def load_robots(client: httpx.Client, site: CrawlSite) -> RobotFileParser:
         else:
             logger.warning(
                 "robots.txt for %s returned %s; allowing all",
-                site.url,
+                url,
                 response.status_code,
             )
             parser.parse([])
         return parser
 
     except httpx.RequestError as exc:
-        logger.warning("Could not fetch robots.txt for %s: %s", site.url, exc)
+        logger.warning("Could not fetch robots.txt for %s: %s", url, exc)
         parser.parse([])
         return parser
+
+
+# robots.txt parsers per origin, shared across all seeds and threads
+class RobotsCache:
+    def __init__(self, client: httpx.Client) -> None:
+        self._client = client
+        self._parsers: dict[str, RobotFileParser] = {}
+        self._lock = threading.Lock()
+
+    def can_fetch(self, user_agent: str, url: str) -> bool:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return False
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        with self._lock:
+            parser = self._parsers.get(origin)
+            if parser is None:
+                parser = load_robots(self._client, url)
+                self._parsers[origin] = parser
+        return parser.can_fetch(user_agent, url)
 
 
 # load and validate seed toml list
@@ -110,9 +131,16 @@ def maybe_save_state(
 def save_state(path: Path, state: CrawlState) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = asdict(state)
-    data["seen_urls"] = sorted(state.seen_urls)
-    data["seen_texts"] = sorted(state.seen_texts)
+    # seen_urls/seen_texts are shared across crawl threads
+    data = {
+        "frontier": [asdict(entry) for entry in state.frontier],
+        "seen_urls": sorted(state.seen_urls.copy()),
+        "seen_texts": sorted(state.seen_texts.copy()),
+        "recent_pop_hosts": list(state.recent_pop_hosts),
+        "queued_urls_by_host": dict(state.queued_urls_by_host),
+        "counter": state.counter,
+        "statistics": asdict(state.statistics),
+    }
 
     tmp_path = path.with_name(path.name + ".tmp")
     tmp_path.write_text(json.dumps(data, indent=1), encoding="utf-8")
