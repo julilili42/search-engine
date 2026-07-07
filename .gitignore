@@ -13,8 +13,6 @@ __pycache__/
 index.bin
 results.tsv
 runs/
-verdict-ml/artifacts/*
-!verdict-ml/artifacts/.gitkeep
 
 # client (React/Vite)
 node_modules/

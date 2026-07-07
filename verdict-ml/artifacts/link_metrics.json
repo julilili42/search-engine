@@ -1,0 +1,158 @@
+{
+  "db": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/labeling/data/labeling.sqlite",
+  "crawl_dbs": [
+    "data/pages.sqlite",
+    "data/archive-20260702-pre-ranker/pages.sqlite"
+  ],
+  "hand_examples": 2441,
+  "outcome_examples": 3161,
+  "examples": 5234,
+  "train_examples": 3946,
+  "validation_examples": 1288,
+  "split_method": "group_shuffle",
+  "label_counts": {
+    "negative": 4122,
+    "positive": 1112
+  },
+  "train_label_counts": {
+    "negative": 3072,
+    "positive": 874
+  },
+  "validation_label_counts": {
+    "negative": 1050,
+    "positive": 238
+  },
+  "unique_target_hosts": 1322,
+  "positive_target_hosts": 134,
+  "metrics": {
+    "accuracy": 0.7872670807453416,
+    "labels": {
+      "negative": {
+        "precision": 0.8489208633093526,
+        "recall": 0.8990476190476191,
+        "f1": 0.8732654949121184,
+        "support": 1050
+      },
+      "positive": {
+        "precision": 0.3977272727272727,
+        "recall": 0.29411764705882354,
+        "f1": 0.33816425120772947,
+        "support": 238
+      }
+    },
+    "confusion_matrix": {
+      "labels": [
+        "negative",
+        "positive"
+      ],
+      "matrix": [
+        [
+          944,
+          106
+        ],
+        [
+          168,
+          70
+        ]
+      ]
+    },
+    "classification_report": {
+      "negative": {
+        "precision": 0.8489208633093526,
+        "recall": 0.8990476190476191,
+        "f1-score": 0.8732654949121184,
+        "support": 1050.0
+      },
+      "positive": {
+        "precision": 0.3977272727272727,
+        "recall": 0.29411764705882354,
+        "f1-score": 0.33816425120772947,
+        "support": 238.0
+      },
+      "accuracy": 0.7872670807453416,
+      "macro avg": {
+        "precision": 0.6233240680183126,
+        "recall": 0.5965826330532213,
+        "f1-score": 0.6057148730599239,
+        "support": 1288.0
+      },
+      "weighted avg": {
+        "precision": 0.7655481346148378,
+        "recall": 0.7872670807453416,
+        "f1-score": 0.7743880911841335,
+        "support": 1288.0
+      }
+    },
+    "roc_auc": 0.8107803121248499,
+    "pr_auc": 0.45903741727501274,
+    "thresholds": {
+      "0.20": {
+        "positive_precision": 0.3752577319587629,
+        "positive_recall": 0.7647058823529411,
+        "positive_f1": 0.5034578146611342,
+        "positive_support": 238,
+        "predicted_positive": 485
+      },
+      "0.30": {
+        "positive_precision": 0.38303341902313626,
+        "positive_recall": 0.6260504201680672,
+        "positive_f1": 0.47527910685805425,
+        "positive_support": 238,
+        "predicted_positive": 389
+      },
+      "0.40": {
+        "positive_precision": 0.36713286713286714,
+        "positive_recall": 0.4411764705882353,
+        "positive_f1": 0.40076335877862596,
+        "positive_support": 238,
+        "predicted_positive": 286
+      },
+      "0.50": {
+        "positive_precision": 0.3977272727272727,
+        "positive_recall": 0.29411764705882354,
+        "positive_f1": 0.33816425120772947,
+        "positive_support": 238,
+        "predicted_positive": 176
+      },
+      "0.60": {
+        "positive_precision": 0.5747126436781609,
+        "positive_recall": 0.21008403361344538,
+        "positive_f1": 0.3076923076923077,
+        "positive_support": 238,
+        "predicted_positive": 87
+      },
+      "0.70": {
+        "positive_precision": 0.7659574468085106,
+        "positive_recall": 0.15126050420168066,
+        "positive_f1": 0.25263157894736843,
+        "positive_support": 238,
+        "predicted_positive": 47
+      },
+      "0.80": {
+        "positive_precision": 0.8,
+        "positive_recall": 0.08403361344537816,
+        "positive_f1": 0.1520912547528517,
+        "positive_support": 238,
+        "predicted_positive": 25
+      },
+      "0.90": {
+        "positive_precision": 0.8571428571428571,
+        "positive_recall": 0.025210084033613446,
+        "positive_f1": 0.04897959183673469,
+        "positive_support": 238,
+        "predicted_positive": 7
+      }
+    }
+  },
+  "selected_threshold": 0.8,
+  "selected_threshold_metrics": {
+    "positive_precision": 0.8,
+    "positive_recall": 0.08403361344537816,
+    "positive_f1": 0.1520912547528517,
+    "positive_support": 238,
+    "predicted_positive": 25
+  },
+  "final_model_training_examples": 5234,
+  "model_path": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/verdict-ml/artifacts/link_verdict.joblib",
+  "validation_predictions_path": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/verdict-ml/artifacts/link_validation_predictions.jsonl"
+}

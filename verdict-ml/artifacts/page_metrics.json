@@ -1,0 +1,85 @@
+{
+  "db": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/labeling/data/labeling.sqlite",
+  "examples": 1594,
+  "train_examples": 1226,
+  "validation_examples": 368,
+  "split_method": "group_shuffle",
+  "label_counts": {
+    "positive": 661,
+    "negative": 933
+  },
+  "train_label_counts": {
+    "positive": 560,
+    "negative": 666
+  },
+  "validation_label_counts": {
+    "positive": 101,
+    "negative": 267
+  },
+  "unique_hosts": 483,
+  "metrics": {
+    "accuracy": 0.8722826086956522,
+    "labels": {
+      "negative": {
+        "precision": 0.9621848739495799,
+        "recall": 0.8576779026217228,
+        "f1": 0.906930693069307,
+        "support": 267
+      },
+      "positive": {
+        "precision": 0.7076923076923077,
+        "recall": 0.9108910891089109,
+        "f1": 0.7965367965367965,
+        "support": 101
+      }
+    },
+    "confusion_matrix": {
+      "labels": [
+        "negative",
+        "positive"
+      ],
+      "matrix": [
+        [
+          229,
+          38
+        ],
+        [
+          9,
+          92
+        ]
+      ]
+    },
+    "classification_report": {
+      "negative": {
+        "precision": 0.9621848739495799,
+        "recall": 0.8576779026217228,
+        "f1-score": 0.906930693069307,
+        "support": 267.0
+      },
+      "positive": {
+        "precision": 0.7076923076923077,
+        "recall": 0.9108910891089109,
+        "f1-score": 0.7965367965367965,
+        "support": 101.0
+      },
+      "accuracy": 0.8722826086956522,
+      "macro avg": {
+        "precision": 0.8349385908209438,
+        "recall": 0.8842844958653169,
+        "f1-score": 0.8517337448030518,
+        "support": 368.0
+      },
+      "weighted avg": {
+        "precision": 0.8923377294061438,
+        "recall": 0.8722826086956522,
+        "f1-score": 0.8766323682057646,
+        "support": 368.0
+      }
+    },
+    "roc_auc": 0.9674416879890236,
+    "pr_auc": 0.9413055180702117
+  },
+  "final_model_training_examples": 1594,
+  "model_path": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/verdict-ml/artifacts/page_verdict.joblib",
+  "validation_predictions_path": "/Users/julian/Documents/Projekte/tuebingen-search-engine-main/verdict-ml/artifacts/page_validation_predictions.jsonl"
+}
