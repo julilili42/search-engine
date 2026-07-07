@@ -1,24 +1,28 @@
 # --- Tourism / attractions / food: the eval-relevant core -------------------
+# Official city pages should anchor tourism/civic results.
+[[sites]]
+url = "https://www.tuebingen.de/en/"
+max_pages_per_seed = 1000
+request_delay = 0.5
+
 # See / Do / Eat / Drink sections + a hub of links to related travel pages.
 [[sites]]
 url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
 max_pages_per_seed = 1000
 request_delay = 0.4
-round_robin_weight = 3
 
 # Official tourism portal (English).
 [[sites]]
 url = "https://www.germany.travel/en/cities-culture/tuebingen.html"
 max_pages_per_seed = 1000
 request_delay = 0.5
-round_robin_weight = 2
 
 # Attraction guides; this exact host appears in the assignment's gold examples.
 [[sites]]
 url = "https://www.komoot.com/guide/355570/castles-in-tuebingen-district"
-max_pages_per_seed = 1000
+# useful for attractions, but low average relevance and many near-Tübingen routes
+max_pages_per_seed = 250
 request_delay = 0.5
-round_robin_weight = 2
 
 # Dense English "things to do in Tübingen" guides (single strong pages, ~400
 # city mentions each) — directly on-topic for the attractions query.
@@ -29,7 +33,8 @@ request_delay = 0.7
 
 [[sites]]
 url = "https://justinpluslauren.com/things-to-do-in-tubingen-germany/"
-max_pages_per_seed = 1000
+# disabled after 2026-07-01 crawl: 10,667 fetches for 34 saved pages (0.3% yield)
+max_pages_per_seed = 0
 request_delay = 0.7
 
 [[sites]]
@@ -51,8 +56,20 @@ request_delay = 0.7
 # directly on-topic for the food-and-drinks query.
 [[sites]]
 url = "https://wanderlog.com/list/geoCategory/199488/where-to-eat-best-restaurants-in-tubingen"
-max_pages_per_seed = 1000
+# disabled after 2026-07-01 crawl: 12,265 fetches for 220 saved pages (1.8% yield)
+max_pages_per_seed = 0
 request_delay = 0.5
+
+# Local English food pages; less broad than Wanderlog.
+[[sites]]
+url = "https://www.ludwigs.cc/en"
+max_pages_per_seed = 100
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.wurstkueche.com/en/restaurant/our-place"
+max_pages_per_seed = 100
+request_delay = 0.7
 
 # --- Breadth: events / outdoors / day-trips / student life ------------------
 
@@ -61,18 +78,19 @@ request_delay = 0.5
 url = "https://www.krone-tuebingen.de/en/a-holiday-in-tuebingen"
 max_pages_per_seed = 1000
 request_delay = 0.5
-round_robin_weight = 2
 
 # Outdoors / hiking (Schönbuch nature park, Neckar valley).
 [[sites]]
 url = "https://www.outdooractive.com/en/hiking-trails/tuebingen/hiking-in-tuebingen/1432855/"
-max_pages_per_seed = 1000
+# useful coverage, but noisy; cap it instead of letting it dominate the crawl.
+max_pages_per_seed = 150
 request_delay = 0.5
 
 # Events / festivals: chocolART chocolate festival + Christmas market.
 [[sites]]
 url = "https://www.heatheronhertravels.com/things-to-do-in-tubingen-germany-chocolart/"
-max_pages_per_seed = 1000
+# disabled after 2026-07-01 crawl: 3,083 fetches for 68 saved pages (2.2% yield)
+max_pages_per_seed = 0
 request_delay = 0.7
 
 [[sites]]
@@ -83,7 +101,8 @@ request_delay = 0.7
 # More attractions / things to do.
 [[sites]]
 url = "https://travel.com/regions/europe/germany/tubingen-germany-best-things-to-do-top-picks/"
-max_pages_per_seed = 1000
+# previous crawl yielded one page; keep as a seed page only.
+max_pages_per_seed = 1
 request_delay = 0.7
 
 # --- General / encyclopedic English -----------------------------------------
@@ -93,7 +112,6 @@ request_delay = 0.7
 url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
 max_pages_per_seed = 1000
 request_delay = 0.4
-round_robin_weight = 2
 
 [[sites]]
 url = "https://simple.wikipedia.org/wiki/T%C3%BCbingen"
@@ -105,4 +123,14 @@ request_delay = 0.4
 [[sites]]
 url = "https://uni-tuebingen.de/en/"
 max_pages_per_seed = 1000
+request_delay = 0.5
+
+[[sites]]
+url = "https://tuebingenresearchcampus.com/en/tuebingen/living-in-tuebingen"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.my-stuwe.de/en/"
+max_pages_per_seed = 200
 request_delay = 0.5
