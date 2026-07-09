@@ -18,6 +18,13 @@ def test_tokenize_keeps_numbers_as_tokens():
     assert tokenize("im Jahr 1477 gegründet") == ["im", "jahr", "1477", "gegründet"]
 
 
+def test_tokenize_drops_english_stopwords():
+    assert tokenize("things to do in tübingen") == ["things", "tübingen"]
+    assert tokenize("food and drinks") == ["food", "drinks"]
+    assert tokenize("not in tübingen") == ["not", "tübingen"]
+
+
+
 def test_tokenize_splits_number_followed_by_letters():
     # a token starting with a digit only consumes digits, the rest starts anew
     assert tokenize("1477er") == ["1477", "er"]
