@@ -11,7 +11,6 @@ This repo is a uv workspace with separate components:
 - [`verdict-ml/`](verdict-ml/README.md) — PageVerdict and LinkVerdict training
 - [`labeling/`](labeling/README.md) — manual relevance labeling UI
 - [`client/`](client/README.md) — React frontend for the search API
-- [`legacy/`](legacy/README.md) — earlier Go/Rust prototypes (not maintained)
 
 ## Quickstart
 
