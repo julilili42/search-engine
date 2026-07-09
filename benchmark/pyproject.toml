@@ -1,0 +1,22 @@
+[project]
+name = "tuebingen-benchmark"
+version = "0.1.0"
+description = "Benchmark harness for the Tuebingen search API"
+requires-python = ">=3.10"
+dependencies = [
+    "tuebingen-search",
+]
+
+[tool.uv.sources]
+tuebingen-search = { workspace = true }
+
+[project.scripts]
+benchmark = "tuebingen_benchmark.main:main"
+eval = "tuebingen_benchmark.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tuebingen_benchmark"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
