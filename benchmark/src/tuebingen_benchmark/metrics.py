@@ -11,7 +11,7 @@ class Metrics:
     queries: int
     judged_queries: int
     ndcg_10: float | None
-    ndcg_100: float | None
+    ndcg_20: float | None
     mrr_10: float | None
     positive_10: float | None
     judged_coverage_10: float | None
@@ -51,7 +51,7 @@ def compute_metrics(
     latencies: list[float],
 ) -> Metrics:
     ndcg_10: list[float] = []
-    ndcg_100: list[float] = []
+    ndcg_20: list[float] = []
     mrr_10: list[float] = []
     positive_10: list[float] = []
     coverage_10: list[float] = []
@@ -69,7 +69,7 @@ def compute_metrics(
         ]
 
         ndcg_10.append(ndcg(ratings, list(query_qrels.values()), 10))
-        ndcg_100.append(ndcg(ratings, list(query_qrels.values()), 100))
+        ndcg_20.append(ndcg(ratings, list(query_qrels.values()), 20))
         positive_ranks = [rank for rank, rating in enumerate(ratings[:10], start=1) if rating > 0]
         mrr_10.append(1 / positive_ranks[0] if positive_ranks else 0.0)
         positive_10.append(sum(1 for rating in ratings[:10] if rating > 0))
@@ -80,7 +80,7 @@ def compute_metrics(
         queries=len(queries),
         judged_queries=sum(1 for query_id in queries if qrels.get(query_id)),
         ndcg_10=mean(ndcg_10),
-        ndcg_100=mean(ndcg_100),
+        ndcg_20=mean(ndcg_20),
         mrr_10=mean(mrr_10),
         positive_10=mean(positive_10),
         judged_coverage_10=mean(coverage_10),
@@ -94,15 +94,14 @@ def format_metrics(metrics: Metrics) -> str:
         return "n/a" if value is None else f"{value:.4f}"
 
     rows = [
-        ("queries", str(metrics.queries)),
-        ("judged_queries", str(metrics.judged_queries)),
+        ("Queries", str(metrics.queries)),
         ("nDCG@10", fmt(metrics.ndcg_10)),
-        ("nDCG@100", fmt(metrics.ndcg_100)),
+        ("nDCG@20", fmt(metrics.ndcg_20)),
         ("MRR@10", fmt(metrics.mrr_10)),
-        ("positive@10", fmt(metrics.positive_10)),
-        ("judged_coverage@10", fmt(metrics.judged_coverage_10)),
-        ("judged_coverage@20", fmt(metrics.judged_coverage_20)),
-        ("avg_latency_ms", f"{metrics.avg_latency_ms:.2f}"),
+        ("Positives@10", fmt(metrics.positive_10)),
+        ("Judged@10", fmt(metrics.judged_coverage_10)),
+        ("Judged@20", fmt(metrics.judged_coverage_20)),
+        ("Avg. Latency", f"{metrics.avg_latency_ms:.2f}"),
     ]
     width = max(len(name) for name, _ in rows)
     return "\n".join(f"{name:<{width}}  {value}" for name, value in rows)
@@ -111,12 +110,12 @@ def format_metrics(metrics: Metrics) -> str:
 def metric_rows(metrics: dict[str, object]) -> list[tuple[str, float | int | None]]:
     return [
         ("nDCG@10", metrics.get("ndcg_10")),
-        ("nDCG@100", metrics.get("ndcg_100")),
+        ("nDCG@20", metrics.get("ndcg_20")),
         ("MRR@10", metrics.get("mrr_10")),
-        ("positive@10", metrics.get("positive_10")),
-        ("coverage@10", metrics.get("judged_coverage_10")),
-        ("coverage@20", metrics.get("judged_coverage_20")),
-        ("latency ms", metrics.get("avg_latency_ms")),
+        ("Positives@10", metrics.get("positive_10")),
+        ("Judged@10", metrics.get("judged_coverage_10")),
+        ("Judged@20", metrics.get("judged_coverage_20")),
+        ("Avg. Latency", metrics.get("avg_latency_ms")),
     ]
 
 
@@ -132,12 +131,12 @@ def format_comparison(left: dict[str, object], right: dict[str, object]) -> str:
     for label, left_value in metric_rows(left_metrics):
         right_value = right_metrics.get({
             "nDCG@10": "ndcg_10",
-            "nDCG@100": "ndcg_100",
+            "nDCG@20": "ndcg_20",
             "MRR@10": "mrr_10",
-            "positive@10": "positive_10",
-            "coverage@10": "judged_coverage_10",
-            "coverage@20": "judged_coverage_20",
-            "latency ms": "avg_latency_ms",
+            "Positives@10": "positive_10",
+            "Judged@10": "judged_coverage_10",
+            "Judged@20": "judged_coverage_20",
+            "Avg. Latency": "avg_latency_ms",
         }[label])
         rows.append((label, fmt_value(left_value), fmt_value(right_value), fmt_delta(left_value, right_value)))
 
