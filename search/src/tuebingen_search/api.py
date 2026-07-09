@@ -4,8 +4,8 @@ import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
-from .embeddings import load_embeddings
+from fastapi import FastAPI, HTTPException, Query
+from .embeddings import embed_texts, load_embeddings
 from .search import SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
 
@@ -39,6 +39,22 @@ def search_api(
     context_size: int = Query(20, ge=1, le=100),
 ):
     return search_index(app.state.index, q, top_n, context_size, app.state.doc_embeddings)
+
+
+@app.get("/map")
+def map_api(x: str = Query(min_length=1), y: str = Query(min_length=1)):
+    embeddings = app.state.doc_embeddings
+    if embeddings is None:
+        raise HTTPException(status_code=503, detail="Embeddings not available, run `uv run embed`.")
+
+    x_axis, y_axis = embed_texts([x, y])
+    xs = embeddings @ x_axis
+    ys = embeddings @ y_axis
+    return [
+        {"url": document.url, "title": document.title, "x": float(xs[i]), "y": float(ys[i])}
+        for i, document in enumerate(app.state.index.documents)
+        if document.url
+    ]
 
 
 @app.get("/health")

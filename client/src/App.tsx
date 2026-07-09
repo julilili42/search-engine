@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
-import { Search, Loader2, ExternalLink } from "lucide-react"
+import { Search, Loader2, ExternalLink, Map, List } from "lucide-react"
 
+import MapView from "@/MapView"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -38,6 +39,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+  const [showMap, setShowMap] = useState(false)
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault()
@@ -64,12 +66,24 @@ function App() {
 
   return (
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-6 px-4 py-10">
-      <header className="space-y-1">
+      <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">
           Tübingen Search
         </h1>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={showMap ? "Show search" : "Show map"}
+          onClick={() => setShowMap((value) => !value)}
+        >
+          {showMap ? <List /> : <Map />}
+        </Button>
       </header>
 
+      {showMap && <MapView />}
+
+      {!showMap && (
+        <>
       <form onSubmit={handleSearch} className="flex gap-2">
         <Input
           value={query}
@@ -131,6 +145,8 @@ function App() {
           </Card>
         ))}
       </div>
+        </>
+      )}
     </div>
   )
 }
