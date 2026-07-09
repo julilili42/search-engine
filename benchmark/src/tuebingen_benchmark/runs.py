@@ -9,6 +9,13 @@ from pathlib import Path
 from .metrics import Metrics
 
 
+def display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(path)
+
+
 def crawl_id(db_path: Path) -> str:
     timestamp = datetime.fromtimestamp(db_path.stat().st_mtime)
     return "crawl-" + timestamp.strftime("%Y%m%d-%H%M")
@@ -39,10 +46,10 @@ def save_run(
         "name": name,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
         "crawl": crawl,
-        "db_path": str(db_path),
-        "index_path": str(index_path),
-        "queries_path": str(queries_path),
-        "qrels_path": str(qrels_path),
+        "db_path": display_path(db_path),
+        "index_path": display_path(index_path),
+        "queries_path": display_path(queries_path),
+        "qrels_path": display_path(qrels_path),
         "top_n": top_n,
         "metrics": asdict(metrics),
     }
