@@ -146,3 +146,25 @@ def test_search_does_not_read_the_source_file(tmp_path):
     assert len(results) == 1
     assert results[0].path == missing_page
     assert results[0].snippet == "apple"
+
+
+def test_rerank_blends_lexical_and_semantic_scores():
+    import numpy as np
+
+    from tuebingen_search.search import rerank
+
+    candidates = [(0, 10.0), (1, 9.9), (2, 5.0)]
+    doc_embeddings = np.array(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.7, 0.7],
+        ]
+    )
+    query_embedding = np.array([0.0, 1.0])
+
+    reranked = rerank(candidates, doc_embeddings, query_embedding, alpha=0.5)
+
+    assert [doc_index for doc_index, _ in reranked] == [1, 0, 2]
+    scores = [score for _, score in reranked]
+    assert scores == sorted(scores, reverse=True)

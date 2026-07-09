@@ -7,6 +7,9 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
+
+from .embeddings import embed_texts, load_embeddings
 from .models import (
     DocumentScores,
     DocumentTermPositions,
@@ -14,13 +17,24 @@ from .models import (
     SearchResult,
     TermPosition,
 )
+from .paths import DEFAULT_EMBEDDINGS_PATH
 from .tokenizer import tokenize
 from .storage import load_index, elapsed
 
 
 logger = logging.getLogger(__name__)
 
-def search_index(index: SearchIndex, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
+RERANK_CANDIDATES = 100
+ALPHA = 0.5
+
+
+def search_index(
+    index: SearchIndex,
+    query: str,
+    top_n: int,
+    context_size: int = 20,
+    doc_embeddings: np.ndarray | None = None,
+) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
 
@@ -42,7 +56,12 @@ def search_index(index: SearchIndex, query: str, top_n: int, context_size: int =
     for doc_index, doc_term_positions in term_positions.items():
         scores[doc_index] += proximity_bonus(doc_term_positions)
 
-    ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
+    if doc_embeddings is not None and scores:
+        candidates = heapq.nlargest(max(top_n, RERANK_CANDIDATES), scores.items(), key=lambda item: item[1])
+        ranked_results = rerank(candidates, doc_embeddings, embed_texts([query])[0])[:top_n]
+    else:
+        ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
+
     search_results: list[SearchResult] = []
 
     for rank, (doc_index, score) in enumerate(ranked_results, start=1):
@@ -59,8 +78,28 @@ def search_index(index: SearchIndex, query: str, top_n: int, context_size: int =
     return search_results
 
 
+def rerank(
+    candidates: list[tuple[int, float]],
+    doc_embeddings: np.ndarray,
+    query_embedding: np.ndarray,
+    alpha: float = ALPHA,
+) -> list[tuple[int, float]]:
+    doc_indices = [doc_index for doc_index, _ in candidates]
+    lexical = np.array([score for _, score in candidates])
+
+    spread = lexical.max() - lexical.min()
+    lexical_norm = (lexical - lexical.min()) / spread if spread > 0 else np.zeros_like(lexical)
+    cosine = doc_embeddings[doc_indices] @ query_embedding
+
+    blended = alpha * lexical_norm + (1 - alpha) * cosine
+    order = np.argsort(-blended)
+    return [(doc_indices[i], float(blended[i])) for i in order]
+
+
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
-    return search_index(load_index(index_path), query, top_n, context_size)
+    index = load_index(index_path)
+    doc_embeddings = load_embeddings(DEFAULT_EMBEDDINGS_PATH, index.documents)
+    return search_index(index, query, top_n, context_size, doc_embeddings)
 
 
 def best_window(term_positions: TermPosition) -> tuple[int, int] | None:

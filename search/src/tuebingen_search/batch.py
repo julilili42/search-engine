@@ -1,5 +1,7 @@
 from pathlib import Path
 import csv
+from .embeddings import load_embeddings
+from .paths import DEFAULT_EMBEDDINGS_PATH
 from .search import search_index, load_index
 from .models import SearchResult
 
@@ -30,8 +32,9 @@ def import_batch(import_path: Path) -> dict[int, str]:
 def search_batch(index_path: Path, batch: dict[int, str], top_n: int) -> dict[int, list[SearchResult]]: 
     search_results = {}
     index = load_index(index_path)
+    doc_embeddings = load_embeddings(DEFAULT_EMBEDDINGS_PATH, index.documents)
     for query_id, query in batch.items():
-        search_results[query_id] = search_index(index, query, top_n)
+        search_results[query_id] = search_index(index, query, top_n, doc_embeddings=doc_embeddings)
     return search_results
 
 def export_batch(export_path: Path, search_results: dict[int, list[SearchResult]]) -> None:
