@@ -85,7 +85,7 @@ def test_search_boosts_nearby_query_terms(tmp_path):
 
 
 def test_proximity_bonus_requires_all_query_terms():
-    assert proximity_bonus({"alpha", "beta"}, {"alpha": [0]}) == 0.0
+    assert proximity_bonus({"alpha": [0]}) == 0.0
 
 
 def test_search_respects_top_n(index_path):
@@ -114,13 +114,22 @@ def test_generate_snippet_includes_query_term_with_context():
     terms = ["zero", "one", "two", "target", "three", "four", "five"]
 
     # "target" is at position 3
-    snippet = generate_snippet(terms, [3], context_size=2)
+    snippet = generate_snippet(terms, {"target": [3]}, context_size=2)
 
     assert snippet == "... one two target three four ..."
 
 
 def test_generate_snippet_falls_back_to_start_of_document():
-    assert generate_snippet(["one", "two", "three"], [], context_size=2) == "one two three"
+    assert generate_snippet(["one", "two", "three"], {}, context_size=2) == "one two three"
+
+
+def test_generate_snippet_centers_on_tightest_window():
+    terms = ["alpha", "x", "x", "x", "x", "x", "x", "x", "alpha", "beta", "x"]
+
+    # "alpha" appears at 0 and 8, "beta" at 9; snippet should show them together
+    snippet = generate_snippet(terms, {"alpha": [0, 8], "beta": [9]}, context_size=1)
+
+    assert snippet == "... x alpha beta ..."
 
 
 def test_search_does_not_read_the_source_file(tmp_path):

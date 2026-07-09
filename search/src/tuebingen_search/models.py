@@ -3,6 +3,9 @@ from pathlib import Path
 
 TermFrequency = dict[str, int]
 TermPosition = dict[str, list[int]]
+DocumentScores = dict[int, float]
+DocumentTermPositions = dict[int, TermPosition]
+
 
 @dataclass(frozen=True)
 class Posting:
@@ -32,4 +35,3 @@ class SearchResult:
     path: Path
     url: str | None
     snippet: str
-
