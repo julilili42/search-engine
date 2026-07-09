@@ -103,7 +103,8 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
             path=file_path,
             url=record.url,
             length=len(terms),
-            terms=tuple(terms)
+            terms=tuple(terms),
+            title=record.title or None,
         )
 
         # collecting indices at which terms appear, s.t. we can generate a query based snippet in the search

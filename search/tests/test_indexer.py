@@ -141,7 +141,7 @@ def test_index_stores_document_length(tmp_path):
     with index_path.open("rb") as index_file:
         data = msgpack.unpack(index_file, raw=False)
 
-    _, _, length, _ = data["documents"][0]
+    _, _, length, _, _ = data["documents"][0]
     assert length == 4
 
 
@@ -168,4 +168,5 @@ def test_index_stores_document_terms(tmp_path):
         "https://example.test/a.html",
         4,
         ["one", "two", "three", "four"],
+        "a",
     ]

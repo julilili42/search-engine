@@ -20,6 +20,7 @@ class Document:
     url: str | None
     length: int
     terms: tuple[str, ...]
+    title: str | None = None
 
 
 @dataclass(frozen=True)
