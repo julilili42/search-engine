@@ -3,7 +3,7 @@ import pytest
 from tuebingen_search.indexer import index
 from helpers import make_page_load
 from tuebingen_search.models import Document, Posting, SearchIndex
-from tuebingen_search.search import generate_snippet, search, search_index
+from tuebingen_search.search import generate_snippet, proximity_bonus, search, search_index
 
 PAGES = {
     "apple.html": "<html><body><p>apple apple apple banana</p></body></html>",
@@ -51,6 +51,41 @@ def test_search_accumulates_scores_over_query_terms(index_path):
     assert len(results) == 3
     # banana.html matches both terms and ranks first
     assert paths[0].endswith("banana.html")
+
+
+def test_search_boosts_nearby_query_terms(tmp_path):
+    far_page = tmp_path / "far.html"
+    close_page = tmp_path / "close.html"
+    index = SearchIndex(
+        documents=[
+            Document(
+                path=far_page,
+                url=None,
+                length=21,
+                terms=("alpha",) + ("x",) * 19 + ("beta",),
+            ),
+            Document(path=close_page, url=None, length=2, terms=("alpha", "beta")),
+        ],
+        inverted_index={
+            "alpha": [
+                Posting(doc_index=0, score=1.0, positions=[0]),
+                Posting(doc_index=1, score=1.0, positions=[0]),
+            ],
+            "beta": [
+                Posting(doc_index=0, score=1.0, positions=[20]),
+                Posting(doc_index=1, score=1.0, positions=[1]),
+            ],
+        },
+    )
+
+    results = search_index(index, "alpha beta", top_n=2)
+
+    assert results[0].path == close_page
+    assert results[0].score > results[1].score
+
+
+def test_proximity_bonus_requires_all_query_terms():
+    assert proximity_bonus({"alpha", "beta"}, {"alpha": [0]}) == 0.0
 
 
 def test_search_respects_top_n(index_path):
