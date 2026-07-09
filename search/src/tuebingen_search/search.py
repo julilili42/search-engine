@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+import os
 import time
 
 from collections.abc import Sequence
@@ -25,7 +26,9 @@ from .storage import load_index, elapsed
 logger = logging.getLogger(__name__)
 
 RERANK_CANDIDATES = 100
-ALPHA = 0.5
+# env overrides exist for benchmark sweeps (alpha tuning, RRF comparison)
+ALPHA = float(os.environ.get("RERANK_ALPHA", "0.5"))
+RRF_K = 60
 
 
 def search_index(
@@ -91,9 +94,21 @@ def rerank(
     lexical_norm = (lexical - lexical.min()) / spread if spread > 0 else np.zeros_like(lexical)
     cosine = doc_embeddings[doc_indices] @ query_embedding
 
-    blended = alpha * lexical_norm + (1 - alpha) * cosine
+    if os.environ.get("RERANK_FUSION") == "rrf":
+        blended = reciprocal_rank_fusion(lexical, cosine)
+    else:
+        blended = alpha * lexical_norm + (1 - alpha) * cosine
     order = np.argsort(-blended)
     return [(doc_indices[i], float(blended[i])) for i in order]
+
+
+def reciprocal_rank_fusion(lexical: np.ndarray, cosine: np.ndarray, k: int = RRF_K) -> np.ndarray:
+    def ranks(scores: np.ndarray) -> np.ndarray:
+        positions = np.empty(len(scores))
+        positions[np.argsort(-scores)] = np.arange(1, len(scores) + 1)
+        return positions
+
+    return 1 / (k + ranks(lexical)) + 1 / (k + ranks(cosine))
 
 
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
