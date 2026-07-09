@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.136.3",
     "msgpack>=1.1.0",
+    "numpy>=2.4.6",
     "selectolax>=0.4.10",
+    "sentence-transformers>=5.6.0",
 ]
 
 [dependency-groups]
