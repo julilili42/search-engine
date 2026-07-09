@@ -13,15 +13,14 @@ from .storage import load_index, elapsed
 
 logger = logging.getLogger(__name__)
 
-# paraphrase/STS training data only, NOT fine-tuned on retrieval datasets (course requirement)
+# course rules forbid models fine-tuned on retrieval datasets; this one is paraphrase/STS-trained
 MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L6-v2"
-# ponytail: first 2000 chars is all the model's 128-token window can see anyway; chunk+pool if quality lacks
+# the model's 128-token window sees roughly this much anyway
 MAX_TEXT_CHARS = 2000
 
 
 @lru_cache(maxsize=1)
 def get_model():
-    # deferred import, keeps `uv run index`/`search` startup fast when embeddings are unused
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(MODEL_NAME)
@@ -46,8 +45,7 @@ def build_embeddings(index_path: Path, out_path: Path) -> None:
     logger.info("Encoding with %s...", MODEL_NAME)
     vectors = embed_texts(texts)
 
-    # store document paths alongside the vectors so a stale file is detected instead of
-    # silently mapping embeddings to the wrong documents after an index rebuild
+    # stored paths detect a stale file after an index rebuild instead of silently misaligning rows
     paths = np.array([str(document.path) for document in index.documents])
     np.savez(out_path, vectors=vectors, paths=paths)
     logger.info("Saved %d embeddings to %s in %s", len(vectors), out_path, elapsed(start))

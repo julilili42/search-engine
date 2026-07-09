@@ -30,7 +30,7 @@ def load_index(index_path: Path | str) -> SearchIndex:
 
     index = SearchIndex(
     documents=[
-            # *rest tolerates index files written before the title field existed
+            # *rest: index files written before the title field existed
             Document(path=Path(path), url=url, length=length, terms=tuple(terms), title=rest[0] if rest else None)
             for path, url, length, terms, *rest in raw["documents"]
             ],
