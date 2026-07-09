@@ -2,9 +2,10 @@ from pathlib import Path
 import logging
 from collections.abc import Sequence
 
+from .embeddings import build_embeddings
 from .indexer import index
 from .search import search
-from .cli import build_index_parser, build_search_parser
+from .cli import build_index_parser, build_search_parser, build_embed_parser
 from .load_pages import PageLoad
 
 
@@ -20,6 +21,14 @@ def index_main(argv: Sequence[str] | None = None) -> None:
     pages_db = PageLoad(args.db)
 
     index(output_path, pages_db)
+
+
+def embed_main(argv: Sequence[str] | None = None) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    args = build_embed_parser().parse_args(argv)
+    if not args.index.exists():
+        raise SystemExit(f"Index not found: {args.index}. Run `uv run index` first.")
+    build_embeddings(args.index, args.output)
 
 
 def search_main(argv: Sequence[str] | None = None) -> None:

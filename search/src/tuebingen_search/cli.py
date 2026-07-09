@@ -1,7 +1,13 @@
 from __future__ import annotations
 import argparse
 from pathlib import Path
-from .paths import DEFAULT_DB_PATH, DEFAULT_INDEX_PATH, DEFAULT_BATCH_PATH, DEFAULT_RESULT_PATH
+from .paths import (
+    DEFAULT_DB_PATH,
+    DEFAULT_INDEX_PATH,
+    DEFAULT_EMBEDDINGS_PATH,
+    DEFAULT_BATCH_PATH,
+    DEFAULT_RESULT_PATH,
+)
 
 
 def build_index_parser() -> argparse.ArgumentParser:
@@ -23,6 +29,16 @@ def build_search_parser() -> argparse.ArgumentParser:
     parser.add_argument("-q", "--query", required=True)
     parser.add_argument("-t", "--top-n", type=int, default=10)
     parser.add_argument("-c", "--context-size", type=int, default=20)
+    return parser
+
+
+def build_embed_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="embed",
+        description="Build document embeddings for the Tuebingen index",
+    )
+    parser.add_argument("-i", "--index", type=Path, default=DEFAULT_INDEX_PATH)
+    parser.add_argument("-o", "--output", type=Path, default=DEFAULT_EMBEDDINGS_PATH)
     return parser
 
 

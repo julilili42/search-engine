@@ -20,6 +20,7 @@ dev = [
 data-fetch = "tuebingen_search.data_fetch:main"
 index = "tuebingen_search.main:index_main"
 search = "tuebingen_search.main:search_main"
+embed = "tuebingen_search.main:embed_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tuebingen_search"]
