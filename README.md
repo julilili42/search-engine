@@ -14,29 +14,37 @@ This repo is a uv workspace with separate components:
 
 ## Quickstart
 
+Install dependencies:
+
 ```bash
 uv sync
 ```
 
-### Crawl locally
+Choose a data source:
 
-```bash
-uv run crawl                                               # 1. crawl pages -> data/
-uv run index                                               # 2. build data/index.bin
-uv run embed                                               # 3. build data/embeddings.npz
-uv run search -q "tübingen attractions"                    # 4. query
-```
-
-### Download the latest snapshot
+**Latest snapshot**
 
 ```bash
 uv run data-fetch
+```
+
+**Crawl locally**
+
+```bash
+uv run crawl
+uv run index
+uv run embed
+```
+
+Search:
+
+```bash
 uv run search -q "tübingen attractions"
 ```
 
-### Open in the browser
+### Web UI
 
-In separate terminals:
+Start the API and client in separate terminals:
 
 ```bash
 uv run uvicorn tuebingen_search.api:app
@@ -48,7 +56,7 @@ npm install  # once
 npm run dev
 ```
 
-Open http://localhost:5173.
+Vite prints the local URL for the client.
 
 For the crawl report, HTTP API, web client, and all options, see the component
 READMEs linked above (e.g. [`search/`](search/README.md)).
