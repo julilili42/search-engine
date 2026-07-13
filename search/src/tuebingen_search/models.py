@@ -12,6 +12,8 @@ class DocumentField(str, Enum):
 
 
 FieldTermFrequencies = dict[DocumentField, TermFrequency]
+FieldLengths = dict[DocumentField, int]
+AverageFieldLengths = dict[DocumentField, float]
 TermPosition = dict[str, list[int]]
 DocumentScores = dict[int, float]
 DocumentTermPositions = dict[int, TermPosition]
