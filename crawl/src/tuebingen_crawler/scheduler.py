@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # pages a worker crawls between stop-flag checks
 WORKER_CHUNK = 5
+# fixed worker pool for the global best-first scheduler
+# must be smaller then seed count
+GLOBAL_FRONTIER_WORKERS = 8
 
 
 def crawl_hostname(
@@ -107,26 +110,59 @@ def _prepare_runs(
     return runs
 
 
-# one thread per seed
+# a fixed pool of workers always picks the seed whose best queued link scores highest across all seeds
 def _run_parallel(runs: list[CrawlRun]) -> None:
     if not runs:
         return
     stop = threading.Event()
+    ready = threading.Condition()
+    busy: set[int] = set()
+    dead: set[int] = set()
 
-    def work(run: CrawlRun) -> None:
-        try:
-            while run.has_work and not stop.is_set():
+    def _best_available() -> int | None:
+        candidates = [
+            index
+            for index, run in enumerate(runs)
+            if index not in busy and index not in dead and run.has_work
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda index: runs[index].head_priority)
+
+    def work() -> None:
+        while not stop.is_set():
+            with ready:
+                index = _best_available()
+                while index is None:
+                    if not busy:
+                        return  
+                    ready.wait(timeout=1.0)
+                    if stop.is_set():
+                        return
+                    index = _best_available()
+                busy.add(index)
+            run = runs[index]
+            try:
                 run.run_chunk(WORKER_CHUNK)
-        except Exception as exc:
-            logger.error("Seed %s failed; dropping: %s", run.site.url, exc)
+            except Exception as exc:
+                logger.error("Seed %s failed; dropping: %s", run.site.url, exc)
+                with ready:
+                    dead.add(index)
+            finally:
+                with ready:
+                    busy.discard(index)
+                    ready.notify_all()
 
-    with ThreadPoolExecutor(max_workers=len(runs)) as pool:
-        futures = [pool.submit(work, run) for run in runs]
+    worker_count = min(len(runs), GLOBAL_FRONTIER_WORKERS)
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = [pool.submit(work) for _ in range(worker_count)]
         try:
             for future in futures:
                 future.result()
         except BaseException:
             stop.set()
+            with ready:
+                ready.notify_all()
             raise
 
 

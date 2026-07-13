@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
 from collections.abc import Sequence
 
 from .frontier import MAX_SAVED_PAGES_PER_HOST

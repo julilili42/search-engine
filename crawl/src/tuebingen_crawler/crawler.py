@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import math
+
 import httpx
 from urllib.parse import urlparse
 from pathlib import Path
@@ -83,12 +85,16 @@ class CrawlRun:
             and self.state.statistics.saved >= self.site.max_pages_per_seed
         )
 
-    # True while this seed has queued links left and has not hit its page cap.
     @property
     def has_work(self) -> bool:
         return bool(self._state and self._state.frontier) and not self._saturated
 
-    # loads (or creates) this seed's persisted state; must run before stepping
+    @property
+    def head_priority(self) -> float:
+        if not (self._state and self._state.frontier):
+            return math.inf
+        return self._state.frontier[0].heap_priority
+
     def prepare(self) -> None:
         canonical_start = validate_start_url(self.site.url)
         hostname = normalize_host(urlparse(canonical_start).hostname)
@@ -98,15 +104,12 @@ class CrawlRun:
             self._state_path, canonical_start, self.seen_urls, self.seen_texts
         )
 
-    # processes up to max_pages frontier URLs (None = until exhausted), then returns
-    # so a scheduler can give other seeds a turn.
     def run_chunk(self, max_pages: int | None = None) -> None:
         processed = 0
         while self.has_work and (max_pages is None or processed < max_pages):
             self._process_next()
             processed += 1
 
-    # pops one URL, fetches/classifies it, and evaluates its links
     def _process_next(self) -> None:
         current_url, depth = pop_frontier(self.state)
         self.state.statistics.discovered += 1
@@ -162,11 +165,9 @@ class CrawlRun:
 
         maybe_save_state(self.save_state_every, self.state_path, self.state)
 
-    # persists the final state for this seed (resumable on the next run)
     def finalize(self) -> None:
         save_state(self.state_path, self.state)
 
-    # crawls a single seed to completion
     def run(self) -> CrawlState:
         self.prepare()
         self.run_chunk()
