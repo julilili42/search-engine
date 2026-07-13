@@ -1,7 +1,19 @@
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 TermFrequency = dict[str, int]
+
+
+class DocumentField(str, Enum):
+    BODY = "body"
+    TITLE = "title"
+    URL = "url"
+
+
+FieldTermFrequencies = dict[DocumentField, TermFrequency]
+FieldLengths = dict[DocumentField, int]
+AverageFieldLengths = dict[DocumentField, float]
 TermPosition = dict[str, list[int]]
 DocumentScores = dict[int, float]
 DocumentTermPositions = dict[int, TermPosition]
