@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -10,7 +11,7 @@ import httpx
 from .crawler import CrawlRun
 from .models import Config
 from .save_pages import LinkStore, PageStore
-from .storage import RobotsCache
+from .storage import RobotsCache, generate_shared_state_path, load_shared_state, save_shared_state
 from verdict_ml.link.predict import LinkVerdictPredictor
 from verdict_ml.page.predict import PageVerdictPredictor
 
@@ -30,9 +31,15 @@ def crawl_hostname(
     page_critic: PageVerdictPredictor,
     link_critic: LinkVerdictPredictor,
 ) -> None:
-    # shared crawl state
-    seen_urls: set[str] = set()
-    seen_texts: set[int] = set()
+    state_dir = config.state_dir or config.save_dir
+    shared_state_path = generate_shared_state_path(state_dir)
+    seen_urls, seen_texts = load_shared_state(shared_state_path)
+    shared_state_lock = threading.Lock()
+
+    def persist_shared_state() -> None:
+        with shared_state_lock:
+            save_shared_state(shared_state_path, seen_urls, seen_texts)
+
     host_counts: dict[str, int] = page_store.host_counts()
     host_reject_counts: dict[str, int] = {}
 
@@ -47,6 +54,7 @@ def crawl_hostname(
             clients,
             seen_urls=seen_urls,
             seen_texts=seen_texts,
+            save_shared_state=persist_shared_state,
             host_counts=host_counts,
             host_reject_counts=host_reject_counts,
         )
@@ -54,6 +62,7 @@ def crawl_hostname(
             _run_parallel(runs)
         finally:
             _finalize_runs(runs)
+            persist_shared_state()
 
 
 # builds and prepares one CrawlRun per seed
@@ -67,6 +76,7 @@ def _prepare_runs(
     *,
     seen_urls: set[str],
     seen_texts: set[int],
+    save_shared_state: Callable[[], None],
     host_counts: dict[str, int],
     host_reject_counts: dict[str, int],
 ) -> list[CrawlRun]:
@@ -96,6 +106,7 @@ def _prepare_runs(
                 user_agent=config.user_agent,
                 seen_urls=seen_urls,
                 seen_texts=seen_texts,
+                save_shared_state=save_shared_state,
                 host_counts=host_counts,
                 host_reject_counts=host_reject_counts,
                 max_pages_per_host=config.max_pages_per_host,

@@ -25,8 +25,10 @@ uv run crawl report --db data/pages.sqlite
   `max_pages_per_seed`.
 - Seeds are crawled in parallel, one worker per seed, so no single seed
   frontier monopolizes the crawl.
-- HTML is saved under `data/html/<host>/`; per-seed state is saved under
-  `data/state/`; page and link metadata is recorded in `data/pages.sqlite`.
+- HTML is saved under `data/html/<host>/`; per-seed state is saved as
+  `data/state/crawl_state-*.json`, with shared deduplication state in
+  `data/state/shared_state.json`; page and link metadata is recorded in
+  `data/pages.sqlite`.
 - Saved pages are capped per host, and hosts with repeated rejects and no saved
   pages are stopped early.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 
 import httpx
 from urllib.parse import urlparse
@@ -47,11 +48,13 @@ class CrawlRun:
         page_critic: PageVerdictPredictor,
         link_critic: LinkVerdictPredictor,
         state_dir: Path | None = None,
+        save_shared_state: Callable[[], None] | None = None,
     ) -> None:
         self.client = client
         self.site = site
         self.save_dir = save_dir
         self.state_dir = state_dir or save_dir
+        self.save_shared_state = save_shared_state
         self.save_state_every = save_state_every
         self.page_store = page_store
         self.link_store = link_store
@@ -165,10 +168,13 @@ class CrawlRun:
             parent_pageverdict=pageverdict,
         )
 
-        maybe_save_state(self.save_state_every, self.state_path, self.state)
+        if maybe_save_state(self.save_state_every, self.state_path, self.state) and self.save_shared_state:
+            self.save_shared_state()
 
     def finalize(self) -> None:
         save_state(self.state_path, self.state)
+        if self.save_shared_state:
+            self.save_shared_state()
 
     def run(self) -> CrawlState:
         self.prepare()

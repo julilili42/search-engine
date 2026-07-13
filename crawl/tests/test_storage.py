@@ -7,12 +7,15 @@ import pytest
 from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
 from tuebingen_crawler.storage import (
     RobotsCache,
+    generate_shared_state_path,
     generate_state_path,
     load_or_create_state,
     load_robots,
+    load_shared_state,
     load_seed_toml,
     load_state,
     save_html,
+    save_shared_state,
     save_state,
 )
 
@@ -80,6 +83,10 @@ def test_generate_state_path_differs_per_host(tmp_path):
     assert first.parent == second.parent == tmp_path / "state"
 
 
+def test_generate_shared_state_path(tmp_path):
+    assert generate_shared_state_path(tmp_path) == tmp_path / "state" / "shared_state.json"
+
+
 def test_save_html_writes_file_under_normalized_hostname(tmp_path):
     body = b"<html>content</html>"
     path = save_html("www.tuepedia.de", tmp_path, "https://www.tuepedia.de/wiki/a", body)
@@ -91,7 +98,7 @@ def test_save_html_writes_file_under_normalized_hostname(tmp_path):
     assert saved.read_bytes() == body
 
 
-def test_save_and_load_state_roundtrip(tmp_path):
+def test_save_state_omits_shared_sets(tmp_path):
     path = tmp_path / "state" / "crawl_state.json"
     state = CrawlState(
         frontier=[
@@ -109,7 +116,19 @@ def test_save_and_load_state_roundtrip(tmp_path):
     loaded, ok = load_state(path)
 
     assert ok
-    assert loaded == state
+    assert loaded.frontier == state.frontier
+    assert loaded.seen_urls == set()
+    assert loaded.seen_texts == set()
+    assert loaded.queued_urls_by_host == state.queued_urls_by_host
+    assert loaded.counter == state.counter
+    assert loaded.statistics == state.statistics
+
+
+def test_save_and_load_shared_state_roundtrip(tmp_path):
+    path = generate_shared_state_path(tmp_path)
+    save_shared_state(path, {"https://host/a", "https://host/b"}, {123, 456})
+
+    assert load_shared_state(path) == ({"https://host/a", "https://host/b"}, {123, 456})
 
 
 def test_save_state_leaves_no_tmp_file(tmp_path):
@@ -209,13 +228,15 @@ def test_load_or_create_state_initializes_new_state_with_seed(tmp_path):
 
 def test_load_or_create_state_uses_shared_seen_sets_for_loaded_state(tmp_path):
     path = tmp_path / "crawl_state.json"
-    save_state(
-        path,
-        CrawlState(
-            frontier=[FrontierEntry(-1.0, 1, "https://host/a", 1)],
-            seen_urls={"https://host/a"},
-            seen_texts={123},
+    path.write_text(
+        json.dumps(
+            {
+                "frontier": [[-1.0, 1, "https://host/a", 1]],
+                "seen_urls": ["https://host/a"],
+                "seen_texts": [123],
+            }
         ),
+        encoding="utf-8",
     )
     seen_urls = {"https://other/"}
     seen_texts = {456}

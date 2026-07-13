@@ -1,7 +1,9 @@
 import math
 
 from tuebingen_crawler import scheduler
+from tuebingen_crawler.models import Config
 from tuebingen_crawler.scheduler import _run_parallel
+from tuebingen_crawler.storage import generate_shared_state_path, load_shared_state
 
 
 class FakeSite:
@@ -63,3 +65,27 @@ def test_global_scheduler_handles_empty_runs():
     log = []
     _run_parallel([FakeRun([], log)])
     assert log == []
+
+
+def test_crawl_persists_shared_state(monkeypatch, tmp_path):
+    class PageStore:
+        @staticmethod
+        def host_counts():
+            return {}
+
+    def prepare_runs(*args, seen_urls, seen_texts, **kwargs):
+        seen_urls.add("https://host/")
+        seen_texts.add(123)
+        return []
+
+    monkeypatch.setattr(scheduler, "_prepare_runs", prepare_runs)
+
+    scheduler.crawl_hostname(
+        Config(save_dir=tmp_path, state_dir=tmp_path),
+        PageStore(),
+        None,
+        None,
+        None,
+    )
+
+    assert load_shared_state(generate_shared_state_path(tmp_path)) == ({"https://host/"}, {123})

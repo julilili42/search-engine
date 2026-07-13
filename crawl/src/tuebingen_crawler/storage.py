@@ -114,6 +114,17 @@ def generate_state_path(save_dir: Path, host: str, canonical_start_url: str) -> 
     return save_dir / "state" / f"crawl_state-{normalized_host}-{digest}.json"
 
 
+def generate_shared_state_path(state_dir: Path) -> Path:
+    return state_dir / "state" / "shared_state.json"
+
+
+def _write_json(path: Path, data: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    os.replace(tmp_path, path)
+
+
 # saving of crawling progress dependend on save_state_every, wrapper around `save_state`
 def maybe_save_state(
     save_state_every: int,
@@ -129,22 +140,34 @@ def maybe_save_state(
 
 # saving of intermediate state
 def save_state(path: Path, state: CrawlState) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    # seen_urls/seen_texts are shared across crawl threads
     data = {
         "frontier": [asdict(entry) for entry in state.frontier],
-        "seen_urls": sorted(state.seen_urls.copy()),
-        "seen_texts": sorted(state.seen_texts.copy()),
         "recent_pop_hosts": list(state.recent_pop_hosts),
         "queued_urls_by_host": dict(state.queued_urls_by_host),
         "counter": state.counter,
         "statistics": asdict(state.statistics),
     }
+    _write_json(path, data)
 
-    tmp_path = path.with_name(path.name + ".tmp")
-    tmp_path.write_text(json.dumps(data, indent=1), encoding="utf-8")
-    os.replace(tmp_path, path)
+
+def save_shared_state(path: Path, seen_urls: set[str], seen_texts: set[int]) -> None:
+    _write_json(
+        path,
+        {
+            "seen_urls": sorted(seen_urls.copy()),
+            "seen_texts": sorted(seen_texts.copy()),
+        },
+    )
+
+
+def load_shared_state(path: Path) -> tuple[set[str], set[int]]:
+    if not path.exists():
+        return set(), set()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    seen_urls = {url for url in data.get("seen_urls", []) if isinstance(url, str)}
+    seen_texts = {fingerprint for fingerprint in data.get("seen_texts", []) if isinstance(fingerprint, int)}
+    return seen_urls, seen_texts
 
 
 # loading of intermediate state, to continue crawling process where it was stopped
