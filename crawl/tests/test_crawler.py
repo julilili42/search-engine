@@ -533,11 +533,13 @@ def test_evaluate_links_passes_saved_host_counts_to_frontier():
 
 
 def test_run_chunk_processes_at_most_max_pages(client, tmp_path, page_store):
+    state_dir = tmp_path / "crawl-state"
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
         run = CrawlRun(
             client=client,
             site=make_site(),
             save_dir=tmp_path,
+            state_dir=state_dir,
             save_state_every=10,
             page_store=page_store,
             link_store=link_store,
@@ -552,6 +554,7 @@ def test_run_chunk_processes_at_most_max_pages(client, tmp_path, page_store):
         # exactly one URL consumed; the root's Tübingen links remain queued
         assert run.state.statistics.discovered == 1
         assert run.has_work
+        assert run.state_path.parent == state_dir / "state"
 
 
 def test_crawl_run_updates_statistics(client, tmp_path, page_store):

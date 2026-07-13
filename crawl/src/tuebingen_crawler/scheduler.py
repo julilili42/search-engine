@@ -88,6 +88,7 @@ def _prepare_runs(
                 client=client,
                 site=site,
                 save_dir=config.save_dir,
+                state_dir=config.state_dir,
                 save_state_every=config.save_state_every,
                 page_store=page_store,
                 link_store=link_store,

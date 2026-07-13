@@ -17,7 +17,7 @@ This repo is a uv workspace with separate components:
 ```bash
 uv sync                                                    # install workspace deps
 uv run crawl                                               # 1. crawl pages -> data/
-uv run index                                               # 2. build index.bin
+uv run index                                               # 2. build data/index.bin
 uv run search -q "tübingen attractions"                    # 3. query
 ```
 

@@ -11,7 +11,7 @@ from .scheduler import crawl_hostname
 from .storage import load_seed_toml
 from .models import Config
 from .save_pages import LinkStore, PageStore
-from .paths import DEFAULT_DATA_DIR, DEFAULT_DB_PATH, DEFAULT_SEED_PATH
+from .paths import DEFAULT_DATA_DIR, DEFAULT_DB_PATH, DEFAULT_HTML_DIR, DEFAULT_SEED_PATH
 from .verdict_models import load_verdict_models
 
 logger = logging.getLogger(__name__)
@@ -25,12 +25,13 @@ def run_crawl() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-    DEFAULT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DEFAULT_HTML_DIR.mkdir(parents=True, exist_ok=True)
 
     sites = load_seed_toml(DEFAULT_SEED_PATH)
     config = Config(
         sites=sites,
-        save_dir=DEFAULT_DATA_DIR,
+        save_dir=DEFAULT_HTML_DIR,
+        state_dir=DEFAULT_DATA_DIR,
         max_pages_per_host=MAX_SAVED_PAGES_PER_HOST,
     )
     try:

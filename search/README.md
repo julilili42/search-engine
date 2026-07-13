@@ -13,7 +13,7 @@ uv sync
 
 ## Usage
 
-Build the index from the crawled pages (`data/pages.sqlite` → `index.bin`):
+Build the index from the crawled pages (`data/pages.sqlite` → `data/index.bin`):
 
 ```bash
 uv run index

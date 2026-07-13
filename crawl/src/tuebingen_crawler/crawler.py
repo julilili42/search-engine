@@ -46,10 +46,12 @@ class CrawlRun:
         max_pages_per_host: int | None = None,
         page_critic: PageVerdictPredictor,
         link_critic: LinkVerdictPredictor,
+        state_dir: Path | None = None,
     ) -> None:
         self.client = client
         self.site = site
         self.save_dir = save_dir
+        self.state_dir = state_dir or save_dir
         self.save_state_every = save_state_every
         self.page_store = page_store
         self.link_store = link_store
@@ -99,7 +101,7 @@ class CrawlRun:
         canonical_start = validate_start_url(self.site.url)
         hostname = normalize_host(urlparse(canonical_start).hostname)
 
-        self._state_path = generate_state_path(self.save_dir, hostname, canonical_start)
+        self._state_path = generate_state_path(self.state_dir, hostname, canonical_start)
         self._state = load_or_create_state(
             self._state_path, canonical_start, self.seen_urls, self.seen_texts
         )
