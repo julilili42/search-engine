@@ -1,7 +1,8 @@
 target/
 search/index.bin
 search/index.json
-/data
+/data/*
+!/data/README.md
 /data2
 /archive
 .DS_Store

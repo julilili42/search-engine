@@ -15,6 +15,7 @@ dev = [
 ]
 
 [project.scripts]
+data-fetch = "tuebingen_search.data_fetch:main"
 index = "tuebingen_search.main:index_main"
 search = "tuebingen_search.main:search_main"
 
