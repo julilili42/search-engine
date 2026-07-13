@@ -1,136 +1,665 @@
-# --- Tourism / attractions / food: the eval-relevant core -------------------
-# Official city pages should anchor tourism/civic results.
+# City & encyclopedic
 [[sites]]
 url = "https://www.tuebingen.de/en/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 1600
 request_delay = 0.5
 
-# See / Do / Eat / Drink sections + a hub of links to related travel pages.
 [[sites]]
-url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
-max_pages_per_seed = 1000
+url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
+max_pages_per_seed = 600
 request_delay = 0.4
 
-# Official tourism portal (English).
+[[sites]]
+url = "https://simple.wikipedia.org/wiki/T%C3%BCbingen"
+max_pages_per_seed = 2000
+request_delay = 0.4
+
+[[sites]]
+url = "https://leo-bw.de/en-GB/detail-gis/-/Detail/details/ORT/labw_ortslexikon/16171/T%C3%BCbingen"
+max_pages_per_seed = 100
+request_delay = 0.7
+
+[[sites]]
+url = "https://tuenews.de/en/new-bus-schedule-in-tuebingen/"
+max_pages_per_seed = 1000
+request_delay = 0.5
+
+# Tourism & attractions
+[[sites]]
+url = "https://www.roughguides.com/germany/baden-wurttemberg/tubingen/"
+max_pages_per_seed = 150
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.unimuseum.uni-tuebingen.de/en/"
+max_pages_per_seed = 400
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.visit-bw.com/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
+max_pages_per_seed = 600
+request_delay = 0.4
+
 [[sites]]
 url = "https://www.germany.travel/en/cities-culture/tuebingen.html"
-max_pages_per_seed = 1000
+max_pages_per_seed = 600
 request_delay = 0.5
 
-# Attraction guides; this exact host appears in the assignment's gold examples.
+[[sites]]
+url = "https://www.tuebingen-info.de/en/"
+max_pages_per_seed = 800
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.krone-tuebingen.de/en/a-holiday-in-tuebingen"
+max_pages_per_seed = 1600
+request_delay = 0.5
+
 [[sites]]
 url = "https://www.komoot.com/guide/355570/castles-in-tuebingen-district"
-# useful for attractions, but low average relevance and many near-Tübingen routes
-max_pages_per_seed = 250
+max_pages_per_seed = 800
 request_delay = 0.5
 
-# Dense English "things to do in Tübingen" guides (single strong pages, ~400
-# city mentions each) — directly on-topic for the attractions query.
 [[sites]]
 url = "https://www.mygermanyvacation.com/best-things-to-do-and-see-in-tubingen-germany/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 2000
 request_delay = 0.7
 
 [[sites]]
 url = "https://justinpluslauren.com/things-to-do-in-tubingen-germany/"
-# disabled after 2026-07-01 crawl: 10,667 fetches for 34 saved pages (0.3% yield)
 max_pages_per_seed = 0
 request_delay = 0.7
 
 [[sites]]
 url = "https://velvetescape.com/things-to-do-in-tubingen/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 2000
 request_delay = 0.7
 
 [[sites]]
 url = "https://thespicyjourney.com/magical-things-to-do-in-tubingen-in-one-day-tuebingen-germany-travel-guide/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 2000
 request_delay = 0.7
 
 [[sites]]
 url = "https://simplifylivelove.com/tubingen-germany/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 2000
 request_delay = 0.7
 
-# Food & drinks: "50 best restaurants in Tübingen" (large English listing) —
-# directly on-topic for the food-and-drinks query.
 [[sites]]
-url = "https://wanderlog.com/list/geoCategory/199488/where-to-eat-best-restaurants-in-tubingen"
-# disabled after 2026-07-01 crawl: 12,265 fetches for 220 saved pages (1.8% yield)
-max_pages_per_seed = 0
+url = "https://travel.com/regions/europe/germany/tubingen-germany-best-things-to-do-top-picks/"
+max_pages_per_seed = 2
+request_delay = 0.7
+
+[[sites]]
+url = "https://visit-tubingen.co.uk/"
+max_pages_per_seed = 600
 request_delay = 0.5
 
-# Local English food pages; less broad than Wanderlog.
+[[sites]]
+url = "https://historicgermany.com/tuebingen/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://whichmuseum.com/place/tubingen-11296/best-museums"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.visitacity.com/en/tubingen/attractions/hohentbingen-castle"
+max_pages_per_seed = 400
+request_delay = 0.5
+
+[[sites]]
+url = "https://audiala.com/en/germany/tubingen"
+max_pages_per_seed = 800
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.trip.com/travel-guide/destination/tubingen-44519/"
+max_pages_per_seed = 300
+request_delay = 0.7
+
+[[sites]]
+url = "https://community.ricksteves.com/travel-forum/germany/tuebingen-stay"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.minube.net/place/renaissance-town-hall-of-tubingen--a8286"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.peek.com/tbingen-baden-wrttemberg-germany/r043bq8/tbingen-tour-self-guided-walking-adventure/a0g49d58"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://angiestravelroutes.com/en/museums-in-tuebingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.viamichelin.com/maps/tourist-attractions/germany/baden_wurttemberg/tubingen/tubingen-72070"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://placesofgermany.de/en/places/tubingen-market-place/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.alisonchino.com/tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.heartmybackpack.com/germany/visit-tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://maps.apple.com/place?place-id=I6ABA060504803014"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://mindtrip.ai/attraction/tubingen-baden-wurttemberg/market-square-marktplatz/at-UCkSyNao"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.letsroam.com/things-to-do/tuebingen-germany?srsltid=AfmBOoqpJqOvQQAjHg_RPRDCYm0qfToXJV_iaDUaKIzR2GwWsM-cexct"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.ostrichtrails.com/europe/germany/tubingen-walking-tour/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://handluggageonly.co.uk/the-colourful-ancient-city-of-tubingen-germany/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.excelsior-bikes.com/magazin/one-day-in-tuebingen-sehenswuerdigkeiten-cafes-mit-dem-rad-entdecken/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.projectexpedition.com/tour-activity/tubingen/private-historic-walking-tour-of-tubingen/62852/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://ai-tourguide.net/tour/tubingen-tour-en.html"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://tuftsprogramsabroadblog.wordpress.com/2024/12/09/a-stocherkahn-adventure-in-tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.shothotspot.com/hotspot/?hotspot=25066"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.germansights.com/tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://museu.ms/museum/details/17928"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.koncepthotels.com/sehenswuerdigkeiten-in-tuebingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://kunsthalle-tuebingen.de/en/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://uni-tuebingen.de/en/facilities/central-institutions/welcome-to-the-botanical-garden/"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.stocherkahnfahrten.com/English/indexE.html"
+max_pages_per_seed = 100
+request_delay = 0.5
+
+[[sites]]
+url = "https://burg-hohenzollern.com/en/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://erinatlarge.com/visiting-burg-hohenzollern-with-kids/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+# Food & drink
+[[sites]]
+url = "https://wanderlog.com/list/geoCategory/199488/where-to-eat-best-restaurants-in-tubingen"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.outdooractive.com/en/places-to-eat-and-drink/tuebingen/eat-and-drink-in-tuebingen/21873363/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
 [[sites]]
 url = "https://www.ludwigs.cc/en"
-max_pages_per_seed = 100
+max_pages_per_seed = 200
 request_delay = 0.7
 
 [[sites]]
 url = "https://www.wurstkueche.com/en/restaurant/our-place"
-max_pages_per_seed = 100
+max_pages_per_seed = 200
 request_delay = 0.7
 
-# --- Breadth: events / outdoors / day-trips / student life ------------------
-
-# English multi-topic tourism hub: events, hiking, excursions, accommodation.
 [[sites]]
-url = "https://www.krone-tuebingen.de/en/a-holiday-in-tuebingen"
-max_pages_per_seed = 1000
+url = "https://www.happycow.net/europe/germany/tubingen/"
+max_pages_per_seed = 160
+request_delay = 0.7
+
+[[sites]]
+url = "https://restaurantguru.com/Tubingen"
+max_pages_per_seed = 240
+request_delay = 0.7
+
+[[sites]]
+url = "https://tempestinatankard.com/2024/05/29/tubingen-beer-on-the-black-forests-doorstep/"
+max_pages_per_seed = 240
 request_delay = 0.5
 
-# Outdoors / hiking (Schönbuch nature park, Neckar valley).
-[[sites]]
-url = "https://www.outdooractive.com/en/hiking-trails/tuebingen/hiking-in-tuebingen/1432855/"
-# useful coverage, but noisy; cap it instead of letting it dominate the crawl.
-max_pages_per_seed = 150
-request_delay = 0.5
-
-# Events / festivals: chocolART chocolate festival + Christmas market.
+# Events
 [[sites]]
 url = "https://www.heatheronhertravels.com/things-to-do-in-tubingen-germany-chocolart/"
-# disabled after 2026-07-01 crawl: 3,083 fetches for 68 saved pages (2.2% yield)
 max_pages_per_seed = 0
 request_delay = 0.7
 
 [[sites]]
 url = "https://culturecravingcouple.com/tubingen-christmas-market/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 2000
 request_delay = 0.7
 
-# More attractions / things to do.
 [[sites]]
-url = "https://travel.com/regions/europe/germany/tubingen-germany-best-things-to-do-top-picks/"
-# previous crawl yielded one page; keep as a seed page only.
-max_pages_per_seed = 1
+url = "https://rausgegangen.de/en/tubingen/"
+max_pages_per_seed = 500
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.eventbrite.com/d/germany--t%C3%BCbingen/events--this-weekend/"
+max_pages_per_seed = 200
 request_delay = 0.7
 
-# --- General / encyclopedic English -----------------------------------------
-
-# Big link hub to English Tübingen pages (castle, Neckar, history, people, ...).
 [[sites]]
-url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
-max_pages_per_seed = 1000
-request_delay = 0.4
+url = "https://philevents.org/search/city/8582505"
+max_pages_per_seed = 240
+request_delay = 0.5
 
 [[sites]]
-url = "https://simple.wikipedia.org/wiki/T%C3%BCbingen"
-max_pages_per_seed = 1000
-request_delay = 0.4
+url = "https://www.meetup.com/find/de--tubingen/expat/"
+max_pages_per_seed = 240
+request_delay = 0.5
 
-# --- Academic anchor (Tübingen is a research city; keep some breadth) --------
+[[sites]]
+url = "https://allevents.in/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.songkick.com/metro-areas/28594-germany-tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# Outdoors & hiking
+[[sites]]
+url = "https://www.outdooractive.com/en/hiking-trails/tuebingen/hiking-in-tuebingen/1432855/"
+max_pages_per_seed = 800
+request_delay = 0.5
+
+[[sites]]
+url = "https://hiiker.app/hikes/germany/tubingen/easy"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.naturpark-schoenbuch.de/en/"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.buntewiese-tuebingen.de/english/"
+max_pages_per_seed = 100
+request_delay = 0.5
+
+# Hotels & accommodation
+[[sites]]
+url = "https://www.kayak.com/Tuebingen-Hotels.33286.hotel.ksp"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.cozycozy.com/ie/tubingen-hotels"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.thehotelguru.com/en-us/best-hotels-in/germany/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://privatecityhotels.com/en/hotels-in/tubingen/"
+max_pages_per_seed = 100
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.landhotel-hirsch-bebenhausen.de/de/english/index/"
+max_pages_per_seed = 60
+request_delay = 0.5
+
+[[sites]]
+url = "https://all.accor.com/hotel/9841/index.en.shtml"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://housinganywhere.com/s/T%C3%BCbingen--Germany"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.casita.com/student-accommodation/germany/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.study-in-germany.com/en/plan-your-studies/preparation/accomodation/student-hall/detail/studierendenwohnheim-eugenstrasse-55-und-57-tuebingen/?df-id=490"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# Transport
+[[sites]]
+url = "https://www.tuebus.de/"
+max_pages_per_seed = 80
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.thetrainline.com/en/stations/tubingen-hbf"
+max_pages_per_seed = 400
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.rome2rio.com/s/T%C3%BCbingen-Hauptbahnhof/University-of-T%C3%BCbingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.omio.com/buses/stuttgart/tuebingen-74pxk"
+max_pages_per_seed = 600
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.busbud.com/en/bus-tubingen/c/u0wkjc"
+max_pages_per_seed = 600
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.uber.com/global/en/r/cities/tubingen-bw-de/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# University & student life
+[[sites]]
+url = "https://civis.eu/en"
+max_pages_per_seed = 150
+request_delay = 0.5
 
 [[sites]]
 url = "https://uni-tuebingen.de/en/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 1600
 request_delay = 0.5
 
 [[sites]]
 url = "https://tuebingenresearchcampus.com/en/tuebingen/living-in-tuebingen"
-max_pages_per_seed = 300
+max_pages_per_seed = 600
 request_delay = 0.5
 
 [[sites]]
 url = "https://www.my-stuwe.de/en/"
+max_pages_per_seed = 1000
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.studit-tuebingen.de/en/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://erasmusu.com/en/erasmus-tubingen/erasmus-experiences"
+max_pages_per_seed = 800
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.mygermanuniversity.com/universities/University-of-Tuebingen"
 max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.expatrio.com/about-germany/eberhard-karls-universitat-tubingen"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.myguide.de/en/degree-programmes/detail/eberhard-karls-university-tuebingen-english-g265/?hec-id=g265"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.stonybrook.edu/commcms/studyabroad/outgoing/programs/current-year/academic-year/germany/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://international-exchanges.univ-lille.fr/university/university-of-tuebingen-3"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.iagora.com/studies/uni/Eberhard_Karls_Universit%C3%A4t_T%C3%BCbingen/reviews?lang=en"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://yocket.com/universities/university-of-tubingen-3876"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.eduopinions.com/universities/universities-in-germany/university-of-tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://futureworlds.eu/wiki/University_of_Tuebingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://free-apply.com/en/university/1027600225/programs/2c2c830b-08d2-4a55-9395-b8916943ae52"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://beyondthestates.com/schools/university-of-tuebingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://exchange-buddy.mewi-projekte.de/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# Research & health
+[[sites]]
+url = "https://ellis.eu/"
+max_pages_per_seed = 150
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.is.mpg.de/"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://kyb.tuebingen.mpg.de/en/"
+max_pages_per_seed = 200
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.iwm-tuebingen.de/en/"
+max_pages_per_seed = 150
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.eye-tuebingen.de/"
+max_pages_per_seed = 100
+request_delay = 0.5
+
+[[sites]]
+url = "https://cyber-valley.de/en"
+max_pages_per_seed = 400
+request_delay = 0.5
+
+[[sites]]
+url = "https://tuebingen.ai/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://idw-online.de/de/news852674"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.hih-tuebingen.de/en/"
+max_pages_per_seed = 160
+request_delay = 0.5
+
+[[sites]]
+url = "http://www.wissenschaftscampus-tuebingen.de/www/en/"
+max_pages_per_seed = 100
+request_delay = 0.5
+
+[[sites]]
+url = "https://minerva4ai.eu/tuebingenai/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://bookinghealth.com/university-hospital-tuebingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.qunomedical.com/en/university-hospital-tuebingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://ghp-pulse.com/en/clinics/universitetskaa-klinika-tubingen/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# Weather & practical
+[[sites]]
+url = "https://www.aqi.in/weather/us/germany/baden-wurttemberg/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.wunderground.com/forecast/de/t%C3%BCbingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.meteoblue.com/en/weather/10-days/t%C3%BCbingen_germany_2820860"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://weatherspark.com/y/63782/Average-Weather-in-T%C3%BCbingen-Baden-W%C3%BCrttemberg-Germany-Year-Round"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.ventusky.com/48.52;9.053"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://meteofor.com/weather-tubingen-2541/month/"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.doctena.de/en/general-practitioner-gp/tubingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.engelvoelkers.com/de/de/immobilien/res/kaufen/immobilien/baden-wuerttemberg/tuebingen"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.glassdoor.com/Job/t%C3%BCbingen-research-scientist-jobs-SRCH_IL.0,8_IC2689943_KO9,27.htm"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+# People
+[[sites]]
+url = "https://en.wikipedia.org/wiki/Boris_Palmer"
+max_pages_per_seed = 10
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.theguardian.com/world/2021/may/10/boris-palmer-german-greens-vote-expel-city-mayor-online-racial-slur"
+max_pages_per_seed = 10
+request_delay = 0.7
+
+[[sites]]
+url = "https://en.wikipedia.org/wiki/Friedrich_H%C3%B6lderlin"
+max_pages_per_seed = 20
+request_delay = 0.5
+
+[[sites]]
+url = "https://en.wikipedia.org/wiki/Hermann_Hesse"
+max_pages_per_seed = 20
+request_delay = 0.5
+
+[[sites]]
+url = "https://en.wikipedia.org/wiki/Wilhelm_Schickard"
+max_pages_per_seed = 10
 request_delay = 0.5
