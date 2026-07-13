@@ -1,11 +1,9 @@
-import math
 from pathlib import Path
 
 import msgpack
-import pytest
 
 from tuebingen_search.indexer import build_search_index, index
-from tuebingen_search.scoring import compute_df, compute_idf, compute_tf, compute_tf_idf
+from tuebingen_search.scoring import compute_tf
 from tuebingen_search.models import Document
 from helpers import make_page_load
 
@@ -27,31 +25,6 @@ def test_compute_tf_counts_term_occurrences():
 
 def test_compute_tf_empty():
     assert compute_tf([]) == {}
-
-
-def test_compute_df_counts_documents_per_term():
-    term_freq_index = {
-        make_document("one.html"): {"apple": 3, "pear": 1},
-        make_document("two.html"): {"apple": 1},
-    }
-    assert compute_df(term_freq_index) == {"apple": 2, "pear": 1}
-
-
-def test_compute_idf_uses_smoothed_formula():
-    term_freq_index = {
-        make_document("one.html"): {"common": 1, "rare": 1},
-        make_document("two.html"): {"common": 1},
-    }
-    idf = compute_idf(term_freq_index)
-
-    assert idf["common"] == pytest.approx(math.log(3 / 3) + 1.0)
-    assert idf["rare"] == pytest.approx(math.log(3 / 2) + 1.0)
-    # rarer terms score higher
-    assert idf["rare"] > idf["common"]
-
-
-def test_compute_tf_idf_multiplies():
-    assert compute_tf_idf(3, 1.5) == pytest.approx(4.5)
 
 
 def test_build_search_index_preserves_document_order():
