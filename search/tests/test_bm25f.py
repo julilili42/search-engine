@@ -4,8 +4,8 @@ than body matches, and title/URL terms become searchable."""
 from pathlib import Path
 
 from tuebingen_search.indexer import build_search_index, document_fields, url_field_text
-from tuebingen_search.models import Document
-from tuebingen_search.scoring import compute_bm25f_idf
+from tuebingen_search.models import Document, DocumentField
+from tuebingen_search.scoring import _normalize_field_tf, compute_bm25f_idf
 
 
 def make_document(name: str, terms: tuple[str, ...], *, url: str | None = None, title: str | None = None) -> Document:
@@ -29,9 +29,15 @@ def test_document_fields_splits_body_title_url():
     document = make_document("a.html", ("apple",), url="https://x.test/food-guide", title="Fresh Apples")
     fields = document_fields(document, {"apple": 1})
 
-    assert fields["body"] == {"apple": 1}
-    assert fields["title"] == {"fresh": 1, "apples": 1}
-    assert fields["url"] == {"food": 1, "guide": 1}
+    assert fields[DocumentField.BODY] == {"apple": 1}
+    assert fields[DocumentField.TITLE] == {"fresh": 1, "apples": 1}
+    assert fields[DocumentField.URL] == {"food": 1, "guide": 1}
+
+
+def test_normalize_field_tf_penalizes_long_fields():
+    assert _normalize_field_tf(2, 10, 10) == 2
+    assert _normalize_field_tf(2, 20, 10) < 2
+    assert _normalize_field_tf(0, 10, 10) == 0
 
 
 def test_title_match_outranks_body_only_match():
