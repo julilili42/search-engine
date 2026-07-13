@@ -1,7 +1,14 @@
 import math
 from collections import Counter
 
-from .models import Document, DocumentField, FieldTermFrequencies, TermFrequency
+from .models import (
+    AverageFieldLengths,
+    Document,
+    DocumentField,
+    FieldLengths,
+    FieldTermFrequencies,
+    TermFrequency,
+)
 
 # Titles and URLs carry more intent than body text.
 FIELD_WEIGHTS: dict[DocumentField, float] = {
@@ -38,7 +45,7 @@ def compute_bm25f_idf(
 
 def compute_average_field_lengths(
     field_frequencies: dict[Document, FieldTermFrequencies],
-) -> dict[DocumentField, float]:
+) -> AverageFieldLengths:
     totals: Counter[DocumentField] = Counter()
     for fields in field_frequencies.values():
         for field, term_frequency in fields.items():
@@ -64,8 +71,8 @@ def compute_bm25f_score(
     *,
     term_frequency_per_field: dict[DocumentField, int],
     idf_score: float,
-    field_lengths: dict[DocumentField, int],
-    average_field_lengths: dict[DocumentField, float],
+    field_lengths: FieldLengths,
+    average_field_lengths: AverageFieldLengths,
 ) -> float:
     weighted_term_frequency = sum(
         FIELD_WEIGHTS[field]

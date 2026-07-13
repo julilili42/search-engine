@@ -2,7 +2,7 @@ from pathlib import Path
 
 import msgpack
 
-from tuebingen_search.indexer import build_search_index, index
+from tuebingen_search.indexer import _build_search_index, index
 from tuebingen_search.scoring import compute_tf
 from tuebingen_search.models import Document
 from helpers import make_page_load
@@ -31,7 +31,7 @@ def test_build_search_index_preserves_document_order():
     doc_one = make_document("one.html")
     doc_two = make_document("two.html")
     term_freq_index = {doc_one: {"apple": 1}, doc_two: {"pear": 1}}
-    search_index = build_search_index(term_freq_index, make_positions(term_freq_index))
+    search_index = _build_search_index(term_freq_index, make_positions(term_freq_index))
 
     assert search_index.documents == [doc_one, doc_two]
 
@@ -40,7 +40,7 @@ def test_build_search_index_postings_point_to_correct_documents():
     doc_one = make_document("one.html", length=3)
     doc_two = make_document("two.html", length=1)
     term_freq_index = {doc_one: {"apple": 2, "pear": 1}, doc_two: {"apple": 1}}
-    search_index = build_search_index(term_freq_index, make_positions(term_freq_index))
+    search_index = _build_search_index(term_freq_index, make_positions(term_freq_index))
 
     apple_postings = search_index.inverted_index["apple"]
     assert [posting.doc_index for posting in apple_postings] == [0, 1]
@@ -53,7 +53,7 @@ def test_build_search_index_postings_point_to_correct_documents():
 
 
 def test_build_search_index_empty():
-    search_index = build_search_index({}, {})
+    search_index = _build_search_index({}, {})
     assert search_index.documents == []
     assert search_index.inverted_index == {}
 
