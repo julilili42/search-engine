@@ -1,2 +1,2 @@
 [tool.uv.workspace]
-members = ["crawl", "search", "verdict-ml", "labeling", "benchmark"]
+members = ["crawl", "search", "verdict-ml", "benchmark/retrieval"]

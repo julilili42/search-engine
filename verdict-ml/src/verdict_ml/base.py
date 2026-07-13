@@ -5,9 +5,6 @@ from pathlib import Path
 from typing import Callable
 
 import joblib
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import FeatureUnion, Pipeline
 
 
 @dataclass(frozen=True)
@@ -17,69 +14,11 @@ class VerdictPrediction:
     model_path: Path
 
 
-def build_tfidf_logreg(
-    *,
-    word_ngram_range: tuple[int, int],
-    char_ngram_range: tuple[int, int],
-    word_min_df: int = 2,
-    word_max_df: float = 0.95,
-    char_min_df: int = 2,
-    char_max_df: float = 0.98,
-    max_iter: int = 2000,
-    random_state: int = 13,
-) -> Pipeline:
-    text_features = FeatureUnion(
-        [
-            (
-                "word",
-                TfidfVectorizer(
-                    analyzer="word",
-                    ngram_range=word_ngram_range,
-                    min_df=word_min_df,
-                    max_df=word_max_df,
-                    sublinear_tf=True,
-                    strip_accents="unicode",
-                ),
-            ),
-            (
-                "char",
-                TfidfVectorizer(
-                    analyzer="char_wb",
-                    ngram_range=char_ngram_range,
-                    min_df=char_min_df,
-                    max_df=char_max_df,
-                    sublinear_tf=True,
-                    strip_accents="unicode",
-                ),
-            ),
-        ]
-    )
-    return Pipeline(
-        [
-            ("features", text_features),
-            (
-                "classifier",
-                LogisticRegression(
-                    class_weight="balanced",
-                    max_iter=max_iter,
-                    random_state=random_state,
-                ),
-            ),
-        ]
-    )
-
-
-def save_bundle(path: Path, bundle: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, path)
-
-
 def load_bundle(path: Path) -> dict[str, object]:
     if not path.exists():
         raise FileNotFoundError(
             f"Verdict model artifact not found: {path}. Train it first with "
-            "`uv run verdict-train page` or `uv run verdict-train link`, "
-            "or pass an explicit model path."
+            "Copy a tested release from labeling-lab, or pass an explicit model path."
         )
     bundle = joblib.load(path)
     if not isinstance(bundle, dict) or "model" not in bundle:

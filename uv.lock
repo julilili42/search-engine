@@ -6,7 +6,6 @@ requires-python = ">=3.14"
 members = [
     "crawler",
     "tuebingen-benchmark",
-    "tuebingen-labeling",
     "tuebingen-search",
     "verdict-ml",
 ]
@@ -821,28 +820,13 @@ wheels = [
 [[package]]
 name = "tuebingen-benchmark"
 version = "0.1.0"
-source = { editable = "benchmark" }
+source = { editable = "benchmark/retrieval" }
 dependencies = [
     { name = "tuebingen-search" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "tuebingen-search", editable = "search" }]
-
-[[package]]
-name = "tuebingen-labeling"
-version = "0.1.0"
-source = { editable = "labeling" }
-dependencies = [
-    { name = "crawler" },
-    { name = "fastapi", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "crawler", editable = "crawl" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.136.3" },
-]
 
 [[package]]
 name = "tuebingen-search"

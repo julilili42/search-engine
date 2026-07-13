@@ -8,8 +8,8 @@ This repo is a uv workspace with separate components:
 
 - [`crawl/`](crawl/README.md) — link crawler that fetches and stores pages
 - [`search/`](search/README.md) — BM25 index, CLI, and FastAPI search API
-- [`verdict-ml/`](verdict-ml/README.md) — PageVerdict and LinkVerdict training
-- [`labeling/`](labeling/README.md) — manual relevance labeling UI
+- [`verdict-ml/`](verdict-ml/README.md) — PageVerdict and LinkVerdict runtime;
+  training and model releases live in [labeling-lab](https://github.com/julilili42/labeling-lab)
 - [`client/`](client/README.md) — React frontend for the search API
 
 ## Quickstart

@@ -8,9 +8,6 @@ dependencies = [
     "scikit-learn>=1.8.0",
 ]
 
-[project.scripts]
-verdict-train = "verdict_ml.train:main"
-
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
