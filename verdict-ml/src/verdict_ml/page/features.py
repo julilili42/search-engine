@@ -9,6 +9,7 @@ class PageVerdictInput:
     url: str
     display_url: str = ""
     snippet: str = ""
+    text: str = ""
 
 
 def normalize_space(value: str | None) -> str:
@@ -21,5 +22,6 @@ def make_text(example: PageVerdictInput) -> str:
         f"url: {normalize_space(example.url)}",
         f"display_url: {normalize_space(example.display_url)}",
         f"snippet: {normalize_space(example.snippet)}",
+        f"text: {normalize_space(example.text)[:3000]}",
     ]
     return "\n".join(parts)

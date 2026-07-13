@@ -98,7 +98,8 @@ def test_classify_page_uses_serp_like_feature_fields():
     assert example.title == "Title"
     assert example.url == "https://www.tuebingen.de/en/"
     assert example.display_url == "www.tuebingen.de/en"
-    assert example.snippet == "Meta description. Body excerpt."
+    assert example.snippet == "Meta description."
+    assert example.text == "Body excerpt."
 
 
 def test_classify_page_gates_off_topic_page_even_with_high_score():

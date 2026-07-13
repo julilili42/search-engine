@@ -11,7 +11,7 @@ from .tuebingen_terms import has_tuebingen
 
 @dataclass(frozen=True)
 class PageClassifierConfig:
-    index_threshold: float = 0.60
+    index_threshold: float = 0.70
     strong_threshold: float = 0.80
     snippet_max_chars: int = 700
 
@@ -116,7 +116,9 @@ def classify_page(
             title=title,
             url=url,
             display_url=_strip_scheme(url),
-            snippet=snippet,
+            # model was trained on serp snippets, so keep the page text out of snippet
+            snippet=page_snippet(description=description, h1=h1),
+            text=text,
         )
     )
     score = prediction.positive_probability
