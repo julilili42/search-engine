@@ -13,7 +13,7 @@ from .storage import load_index, elapsed
 
 logger = logging.getLogger(__name__)
 
-# course rules forbid models fine-tuned on retrieval datasets; this one is paraphrase/STS-trained
+# Paraphrase/STS model, not retrieval-trained.
 MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L6-v2"
 # the model's 128-token window sees roughly this much anyway
 MAX_TEXT_CHARS = 2000

@@ -15,12 +15,40 @@ This repo is a uv workspace with separate components:
 ## Quickstart
 
 ```bash
-uv sync                                                    # install workspace deps
+uv sync
+```
+
+### Crawl locally
+
+```bash
 uv run crawl                                               # 1. crawl pages -> data/
 uv run index                                               # 2. build data/index.bin
 uv run embed                                               # 3. build data/embeddings.npz
 uv run search -q "tübingen attractions"                    # 4. query
 ```
+
+### Download the latest snapshot
+
+```bash
+uv run data-fetch
+uv run search -q "tübingen attractions"
+```
+
+### Open in the browser
+
+In separate terminals:
+
+```bash
+uv run uvicorn tuebingen_search.api:app
+```
+
+```bash
+cd client
+npm install  # once
+npm run dev
+```
+
+Open http://localhost:5173.
 
 For the crawl report, HTTP API, web client, and all options, see the component
 READMEs linked above (e.g. [`search/`](search/README.md)).
