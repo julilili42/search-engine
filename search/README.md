@@ -13,10 +13,11 @@ uv sync
 
 ## Usage
 
-Build the index from the crawled pages (`data/pages.sqlite` → `data/index.bin`):
+Build the index and optional semantic re-ranking data from crawled pages:
 
 ```bash
 uv run index
+uv run embed
 ```
 
 Interactive single query:

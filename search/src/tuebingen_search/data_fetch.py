@@ -11,7 +11,8 @@ from urllib.request import urlopen
 from .paths import DATA_DIR
 
 REPOSITORY = "julilili42/search-engine"
-ASSET_NAMES = ("pages.sqlite", "index.bin")
+REQUIRED_ASSET_NAMES = ("pages.sqlite", "index.bin")
+OPTIONAL_ASSET_NAMES = ("embeddings.npz",)
 
 
 def _release_url(tag: str | None) -> str:
@@ -23,9 +24,9 @@ def _asset_urls(release: dict) -> dict[str, str]:
     assets = {
         asset["name"]: asset["browser_download_url"]
         for asset in release.get("assets", [])
-        if asset.get("name") in ASSET_NAMES
+        if asset.get("name") in REQUIRED_ASSET_NAMES + OPTIONAL_ASSET_NAMES
     }
-    missing = set(ASSET_NAMES) - assets.keys()
+    missing = set(REQUIRED_ASSET_NAMES) - assets.keys()
     if missing:
         raise ValueError(f"Release is missing: {', '.join(sorted(missing))}")
     return assets
@@ -53,6 +54,8 @@ def main(argv: list[str] | None = None) -> None:
         parser.error(str(exc))
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for name in ASSET_NAMES:
+    for name in REQUIRED_ASSET_NAMES + OPTIONAL_ASSET_NAMES:
+        if name not in assets:
+            continue
         print(f"Downloading {name}...")
         _download(assets[name], DATA_DIR / name)

@@ -13,10 +13,17 @@ def test_asset_urls_requires_crawl_data_assets():
         "assets": [
             {"name": "pages.sqlite", "browser_download_url": "https://example.test/pages"},
             {"name": "index.bin", "browser_download_url": "https://example.test/index"},
+            {"name": "embeddings.npz", "browser_download_url": "https://example.test/embeddings"},
         ]
     }
 
     assert _asset_urls(release) == {
+        "pages.sqlite": "https://example.test/pages",
+        "index.bin": "https://example.test/index",
+        "embeddings.npz": "https://example.test/embeddings",
+    }
+
+    assert _asset_urls({"assets": release["assets"][:2]}) == {
         "pages.sqlite": "https://example.test/pages",
         "index.bin": "https://example.test/index",
     }

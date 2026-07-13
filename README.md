@@ -18,7 +18,8 @@ This repo is a uv workspace with separate components:
 uv sync                                                    # install workspace deps
 uv run crawl                                               # 1. crawl pages -> data/
 uv run index                                               # 2. build data/index.bin
-uv run search -q "tübingen attractions"                    # 3. query
+uv run embed                                               # 3. build data/embeddings.npz
+uv run search -q "tübingen attractions"                    # 4. query
 ```
 
 For the crawl report, HTTP API, web client, and all options, see the component
