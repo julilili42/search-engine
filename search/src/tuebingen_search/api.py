@@ -47,9 +47,13 @@ def map_api(x: str = Query(min_length=1), y: str = Query(min_length=1)):
     if embeddings is None:
         raise HTTPException(status_code=503, detail="Embeddings not available, run `uv run embed`.")
 
+    document_embeddings = embeddings.mean_document_vectors()
+    if document_embeddings.shape[1] == 0:
+        raise HTTPException(status_code=503, detail='Embeddings contain no passages.')
+
     x_axis, y_axis = embed_texts([x, y])
-    xs = embeddings @ x_axis
-    ys = embeddings @ y_axis
+    xs = document_embeddings @ x_axis
+    ys = document_embeddings @ y_axis
     return [
         {"url": document.url, "title": document.title, "x": float(xs[i]), "y": float(ys[i])}
         for i, document in enumerate(app.state.index.documents)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .embeddings import embed_texts, load_embeddings
+from .embeddings import PassageEmbeddings, embed_texts, load_embeddings
 from .models import (
     DocumentScores,
     DocumentTermPositions,
@@ -26,8 +26,12 @@ from .storage import load_index, elapsed
 logger = logging.getLogger(__name__)
 
 RERANK_CANDIDATES = 100
-# env overrides exist for benchmark sweeps (alpha tuning, RRF comparison)
-ALPHA = float(os.environ.get("RERANK_ALPHA", "0.5"))
+SEMANTIC_CANDIDATES = int(os.environ.get('SEMANTIC_CANDIDATES', '100'))
+# Blend weight for lexical vs. semantic score (higher = more lexical). Tuned on
+# benchmark/retrieval: the paraphrase model is not retrieval-trained, so it only
+# helps lightly mixed in. 0.7 beats lexical-only (nDCG@10 0.164 -> 0.194); the old
+# 0.5 default actively hurt (MRR@10 0.399 -> 0.256). env-overridable for sweeps.
+ALPHA = float(os.environ.get("RERANK_ALPHA", "0.7"))
 RRF_K = 60
 
 
@@ -36,7 +40,7 @@ def search_index(
     query: str,
     top_n: int,
     context_size: int = 20,
-    doc_embeddings: np.ndarray | None = None,
+    doc_embeddings: PassageEmbeddings | np.ndarray | None = None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -59,9 +63,42 @@ def search_index(
     for doc_index, doc_term_positions in term_positions.items():
         scores[doc_index] += proximity_bonus(doc_term_positions)
 
-    if doc_embeddings is not None and scores:
-        candidates = heapq.nlargest(max(top_n, RERANK_CANDIDATES), scores.items(), key=lambda item: item[1])
-        ranked_results = rerank(candidates, doc_embeddings, embed_texts([query])[0])[:top_n]
+    if doc_embeddings is not None:
+        passage_embeddings = as_passage_embeddings(doc_embeddings)
+        if (
+            len(passage_embeddings.doc_slices) != len(index.documents)
+            or passage_embeddings.vectors.shape[1] == 0
+        ):
+            logger.warning('Embeddings are unusable for this index; using lexical ranking only.')
+            ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
+        else:
+            query_embedding = embed_texts([query])[0]
+            semantic_scores = best_passage_scores(passage_embeddings, query_embedding)
+            lexical = heapq.nlargest(
+                max(top_n, RERANK_CANDIDATES),
+                scores.items(),
+                key=lambda item: item[1],
+            )
+            semantic = heapq.nlargest(
+                max(top_n, SEMANTIC_CANDIDATES),
+                (
+                    (doc_index, float(semantic_scores[doc_index]))
+                    for doc_index, passage_slice in enumerate(passage_embeddings.doc_slices)
+                    if passage_slice.start != passage_slice.stop
+                ),
+                key=lambda item: item[1],
+            )
+            candidate_ids = {doc_index for doc_index, _ in lexical + semantic}
+            candidates = [
+                (doc_index, scores.get(doc_index, 0.0))
+                for doc_index in sorted(candidate_ids)
+            ]
+            ranked_results = rerank(
+                candidates,
+                passage_embeddings,
+                query_embedding,
+                semantic_scores=semantic_scores,
+            )[:top_n]
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
 
@@ -70,8 +107,8 @@ def search_index(
     for rank, (doc_index, score) in enumerate(ranked_results, start=1):
         document = index.documents[doc_index]
         path, url, terms = document.path, document.url, document.terms
-        
-        snippet = generate_snippet(terms, term_positions[doc_index], context_size)
+
+        snippet = generate_snippet(terms, term_positions.get(doc_index, {}), context_size)
 
         search_results.append(
             SearchResult(rank=rank, score=score, path=path, url=url, snippet=snippet)
@@ -81,18 +118,47 @@ def search_index(
     return search_results
 
 
+def as_passage_embeddings(
+    embeddings: PassageEmbeddings | np.ndarray,
+) -> PassageEmbeddings:
+    if isinstance(embeddings, PassageEmbeddings):
+        return embeddings
+    return PassageEmbeddings.from_document_vectors(embeddings)
+
+
+def best_passage_scores(
+    embeddings: PassageEmbeddings | np.ndarray,
+    query_embedding: np.ndarray,
+) -> np.ndarray:
+    """Score each document by its most similar passage."""
+    passage_embeddings = as_passage_embeddings(embeddings)
+    scores = np.zeros(len(passage_embeddings.doc_slices), dtype=np.float32)
+    passage_scores = passage_embeddings.vectors @ query_embedding
+    for doc_index, passage_slice in enumerate(passage_embeddings.doc_slices):
+        document_scores = passage_scores[passage_slice]
+        if len(document_scores):
+            scores[doc_index] = document_scores.max()
+    return scores
+
+
 def rerank(
     candidates: list[tuple[int, float]],
-    doc_embeddings: np.ndarray,
+    doc_embeddings: PassageEmbeddings | np.ndarray,
     query_embedding: np.ndarray,
     alpha: float = ALPHA,
+    semantic_scores: np.ndarray | None = None,
 ) -> list[tuple[int, float]]:
+    if not candidates:
+        return []
+
     doc_indices = [doc_index for doc_index, _ in candidates]
     lexical = np.array([score for _, score in candidates])
 
     spread = lexical.max() - lexical.min()
     lexical_norm = (lexical - lexical.min()) / spread if spread > 0 else np.zeros_like(lexical)
-    cosine = doc_embeddings[doc_indices] @ query_embedding
+    if semantic_scores is None:
+        semantic_scores = best_passage_scores(doc_embeddings, query_embedding)
+    cosine = semantic_scores[doc_indices]
 
     if os.environ.get("RERANK_FUSION") == "rrf":
         blended = reciprocal_rank_fusion(lexical, cosine)

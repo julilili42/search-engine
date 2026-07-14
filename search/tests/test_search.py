@@ -168,3 +168,61 @@ def test_rerank_blends_lexical_and_semantic_scores():
     assert [doc_index for doc_index, _ in reranked] == [1, 0, 2]
     scores = [score for _, score in reranked]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_best_passage_score_uses_maximum_similarity():
+    import numpy as np
+
+    from tuebingen_search.embeddings import PassageEmbeddings
+    from tuebingen_search.search import best_passage_scores
+
+    embeddings = PassageEmbeddings.from_doc_ids(
+        np.array([[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]], dtype=np.float32),
+        np.array([0, 0, 1]),
+        document_count=2,
+    )
+
+    scores = best_passage_scores(embeddings, np.array([0.0, 1.0]))
+
+    assert np.allclose(scores, [1.0, 0.8])
+
+
+def test_hybrid_search_retrieves_semantic_only_document(tmp_path, monkeypatch):
+    import numpy as np
+
+    from tuebingen_search.embeddings import PassageEmbeddings
+
+    lexical_page = tmp_path / 'lexical.html'
+    semantic_page = tmp_path / 'semantic.html'
+    index = SearchIndex(
+        documents=[
+            Document(path=lexical_page, url=None, length=1, terms=('orchard',)),
+            Document(path=semantic_page, url=None, length=2, terms=('fruit', 'guide')),
+        ],
+        inverted_index={
+            'orchard': [Posting(doc_index=0, score=1.0, positions=[0])],
+        },
+    )
+    embeddings = PassageEmbeddings.from_doc_ids(
+        np.array([[0.0, -1.0], [1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+        np.array([0, 1, 1]),
+        document_count=2,
+    )
+    # patch on the module object: the package re-exports the `search` function, which
+    # shadows the `search` submodule if a dotted string target is used
+    import importlib
+
+    search_module = importlib.import_module('tuebingen_search.search')
+    monkeypatch.setattr(
+        search_module,
+        'embed_texts',
+        lambda texts: np.array([[0.0, 1.0]], dtype=np.float32),
+    )
+
+    # 'harvest' matches no document lexically, so the semantic-only page can only be
+    # found via the hybrid semantic candidates (independent of the lexical/semantic blend)
+    results = search_index(index, 'harvest', top_n=1, doc_embeddings=embeddings)
+
+    assert [result.path for result in results] == [semantic_page]
+    # No lexical positions exist, so semantic-only snippets start at the document beginning.
+    assert results[0].snippet == 'fruit guide'
