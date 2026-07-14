@@ -28,10 +28,13 @@ logger = logging.getLogger(__name__)
 RERANK_CANDIDATES = 100
 SEMANTIC_CANDIDATES = int(os.environ.get('SEMANTIC_CANDIDATES', '100'))
 # Blend weight for lexical vs. semantic score (higher = more lexical). Tuned on
-# benchmark/retrieval: the paraphrase model is not retrieval-trained, so it only
-# helps lightly mixed in. 0.7 beats lexical-only (nDCG@10 0.164 -> 0.194); the old
-# 0.5 default actively hurt (MRR@10 0.399 -> 0.256). env-overridable for sweeps.
-ALPHA = float(os.environ.get("RERANK_ALPHA", "0.7"))
+# benchmark/retrieval and model-dependent: mean-pooled bert-base gives a weaker
+# similarity signal than a sentence-transformer, so it only helps lightly mixed
+# in. With bert-base, 0.85 beats lexical-only (nDCG@10 0.164 -> 0.179, MRR@10
+# 0.399 -> 0.405) while 0.7 and below actively hurt. Re-tune when the embedding
+# model changes (RERANK_ALPHA env). For reference: paraphrase-MiniLM peaked at
+# 0.7 with nDCG@10 0.194.
+ALPHA = float(os.environ.get("RERANK_ALPHA", "0.85"))
 RRF_K = 60
 
 
