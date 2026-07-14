@@ -48,6 +48,8 @@ class CrawlSite(BaseModel):
 
     url: str
     max_pages_per_seed: int | None = None
+    # Limits processed frontier URLs, including rejected and failed pages.
+    max_discovered_per_seed: int | None = Field(default=None, ge=0)
     request_timeout: float = 30.0
     retry_delay: float = 10.0
     request_delay: float = 0.01

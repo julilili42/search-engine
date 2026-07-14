@@ -84,10 +84,12 @@ class CrawlRun:
 
     @property
     def _saturated(self) -> bool:
-        return (
-            self.site.max_pages_per_seed is not None
-            and self.site.max_pages_per_seed >= 0
-            and self.state.statistics.saved >= self.site.max_pages_per_seed
+        return any(
+            limit is not None and value >= limit
+            for value, limit in (
+                (self.state.statistics.saved, self.site.max_pages_per_seed),
+                (self.state.statistics.discovered, self.site.max_discovered_per_seed),
+            )
         )
 
     @property

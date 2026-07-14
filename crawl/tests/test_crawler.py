@@ -259,6 +259,13 @@ def test_crawl_run_respects_max_pages_per_seed(client, tmp_path, page_store, req
     assert len(requested_paths) == 2
 
 
+def test_crawl_run_respects_discovered_budget(client, tmp_path, page_store, requested_paths):
+    state = run_crawl(client, tmp_path, page_store, max_discovered_per_seed=2)
+
+    assert state.statistics.discovered == 2
+    assert len(requested_paths) == 2
+
+
 def test_crawl_run_skips_fetching_when_host_capped(client, tmp_path, page_store, requested_paths):
     host_counts = {"host": 1}
     state = run_crawl(

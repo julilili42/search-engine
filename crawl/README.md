@@ -18,11 +18,12 @@ Run commands from the repository root.
 ```bash
 uv run crawl
 uv run crawl report --db data/pages.sqlite
+uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
 ```
 
 - Seeds live in `crawl/seeds.toml`.
 - Each `[[sites]]` entry supports `url`, `request_delay`, optional
-  `max_pages_per_seed`.
+  `max_pages_per_seed`, and `max_discovered_per_seed` for a bounded pilot.
 - Seeds are crawled in parallel, one worker per seed, so no single seed
   frontier monopolizes the crawl.
 - HTML is saved under `data/html/<host>/`; per-seed state is saved as
