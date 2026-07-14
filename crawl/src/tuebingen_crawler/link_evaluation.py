@@ -20,6 +20,7 @@ from verdict_ml.link.predict import LinkVerdictPredictor
 # per-page selection budgets
 MAX_SELECTED_LINKS_PER_URL_FAMILY = 3
 MAX_SELECTED_LINKS_PER_TARGET_HOST = 8
+HIGH_CONFIDENCE_LINK_SCORE = 0.50
 
 _LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
 
@@ -149,7 +150,10 @@ def _enqueue_with_page_caps(
             continue
 
         family = _url_family(verdict.url)
-        if selected_links_by_family.get(family, 0) >= MAX_SELECTED_LINKS_PER_URL_FAMILY:
+        family_limit = MAX_SELECTED_LINKS_PER_URL_FAMILY + int(
+            verdict.score >= HIGH_CONFIDENCE_LINK_SCORE
+        )
+        if selected_links_by_family.get(family, 0) >= family_limit:
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_family_budget"))
             continue
 

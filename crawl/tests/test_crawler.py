@@ -450,7 +450,7 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
             parent_host="host",
             host_counts={},
             max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.9),
+            link_critic=FakeLinkPredictor(0.49),
             link_store=link_store,
         )
         rows = link_store.con.execute(
@@ -464,6 +464,33 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
     assert len(capped) == 2
     # capped links would have been enqueued absent the family budget
     assert all(row["should_enqueue"] == 1 for row in capped)
+
+
+def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_path):
+    state = CrawlState()
+    links = [(f"/news/{i}", "Tübingen") for i in range(5)]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.50),
+            link_store=link_store,
+        )
+        rows = link_store.con.execute(
+            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
+        ).fetchall()
+
+    assert len(state.frontier) == 4
+    assert sum(row["selected"] for row in rows) == 4
+    capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
+    assert len(capped) == 1
+    assert capped[0]["should_enqueue"] == 1
 
 
 def test_evaluate_links_caps_links_per_host(tmp_path):
