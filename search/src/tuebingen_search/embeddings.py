@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
+import torch
+from transformers import AutoModel, AutoTokenizer
 
 from .html import extract_text_from_html
 from .models import Document
@@ -15,8 +17,10 @@ from .storage import elapsed, load_index
 
 logger = logging.getLogger(__name__)
 
-# Paraphrase/STS model, not retrieval-trained.
-MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L6-v2"
+MODEL_NAME = "google-bert/bert-base-uncased"
+MAX_TOKENS = 128
+BATCH_SIZE = 32
+
 EMBEDDINGS_FORMAT_VERSION = 2
 PASSAGE_CHARS = int(os.environ.get('PASSAGE_CHARS', '2000'))
 PASSAGE_OVERLAP = int(os.environ.get('PASSAGE_OVERLAP', '200'))
@@ -77,18 +81,32 @@ class PassageEmbeddings:
 
 @lru_cache(maxsize=1)
 def get_model():
-    from sentence_transformers import SentenceTransformer
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModel.from_pretrained(MODEL_NAME)
+    model.eval()
+    return tokenizer, model
 
-    return SentenceTransformer(MODEL_NAME)
+
+def _mean_pool(token_embeddings: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    weights = attention_mask.unsqueeze(-1).to(token_embeddings.dtype)
+    return (token_embeddings * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1)
 
 
 def embed_texts(texts: list[str]) -> np.ndarray:
-    vectors = get_model().encode(
-        texts,
-        normalize_embeddings=True,
-        show_progress_bar=len(texts) > 100,
-    )
-    return np.asarray(vectors, dtype=np.float32)
+    tokenizer, model = get_model()
+    vectors = []
+    for start in range(0, len(texts), BATCH_SIZE):
+        inputs = tokenizer(
+            texts[start : start + BATCH_SIZE],
+            padding=True,
+            truncation=True,
+            max_length=MAX_TOKENS,
+            return_tensors="pt",
+        )
+        with torch.inference_mode():
+            pooled = _mean_pool(model(**inputs).last_hidden_state, inputs["attention_mask"])
+        vectors.append(torch.nn.functional.normalize(pooled, dim=1))
+    return torch.cat(vectors).numpy().astype(np.float32)
 
 
 def split_passages(
@@ -115,7 +133,7 @@ def split_passages(
 
 
 def build_embeddings(index_path: Path, out_path: Path) -> None:
-    """Write vectors, passage-to-document doc_ids, paths, and format_version to NPZ."""
+    """Write vectors, passage-to-document doc_ids, paths, model and format_version to NPZ."""
     start = time.perf_counter()
     index = load_index(index_path)
 
@@ -133,13 +151,15 @@ def build_embeddings(index_path: Path, out_path: Path) -> None:
     else:
         vectors = np.empty((0, 0), dtype=np.float32)
 
-    # Paths guard alignment; doc_ids maps every passage row to its document.
+    # Paths guard alignment, the model name guards against mixed-model files,
+    # and doc_ids maps every passage row to its document.
     paths = np.array([str(document.path) for document in index.documents])
     np.savez(
         out_path,
         vectors=np.asarray(vectors, dtype=np.float32),
         doc_ids=np.asarray(doc_ids, dtype=np.int64),
         paths=paths,
+        model=MODEL_NAME,
         format_version=np.array(EMBEDDINGS_FORMAT_VERSION, dtype=np.int16),
     )
     logger.info('Saved %d passage embeddings to %s in %s', len(vectors), out_path, elapsed(start))
@@ -150,10 +170,14 @@ def load_embeddings(path: Path, documents: list[Document]) -> PassageEmbeddings 
         return None
 
     with np.load(path, allow_pickle=False) as data:
-        if list(data['paths']) != [str(document.path) for document in documents]:
+        if (
+            'model' not in data.files
+            or data['model'].item() != MODEL_NAME
+            or list(data['paths']) != [str(document.path) for document in documents]
+        ):
             logger.warning(
-                'Embeddings at %s do not match the current index, falling back to BM25 only. '
-                'Run `uv run embed` to rebuild them.',
+                'Embeddings at %s do not match the current index or model, falling back to '
+                'BM25 only. Run `uv run embed` to rebuild them.',
                 path,
             )
             return None

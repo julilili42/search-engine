@@ -8,7 +8,8 @@ dependencies = [
     "msgpack>=1.1.0",
     "numpy>=2.4.6",
     "selectolax>=0.4.10",
-    "sentence-transformers>=5.6.0",
+    "torch>=2.13.0",
+    "transformers>=5.13.0",
 ]
 
 [dependency-groups]
