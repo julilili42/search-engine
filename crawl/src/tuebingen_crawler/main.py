@@ -14,8 +14,6 @@ from .save_pages import LinkStore, PageStore
 from .paths import DEFAULT_DATA_DIR, DEFAULT_DB_PATH, DEFAULT_HTML_DIR, DEFAULT_SEED_PATH
 from .verdict_models import load_verdict_models
 
-logger = logging.getLogger(__name__)
-
 def run_crawl() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -40,17 +38,13 @@ def run_crawl() -> None:
         raise SystemExit(str(exc)) from exc
 
     with PageStore(DEFAULT_DB_PATH) as page_store, LinkStore(DEFAULT_DB_PATH) as link_store:
-        try:
-            crawl_hostname(
-                config,
-                page_store,
-                link_store,
-                page_critic=verdict_models.page,
-                link_critic=verdict_models.link,
-            )
-        except Exception as exc:
-            logger.error("Failed to crawl with error %s", exc)
-            return
+        crawl_hostname(
+            config,
+            page_store,
+            link_store,
+            page_critic=verdict_models.page,
+            link_critic=verdict_models.link,
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> None:

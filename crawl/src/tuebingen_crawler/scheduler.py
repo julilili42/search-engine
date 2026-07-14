@@ -130,6 +130,7 @@ def _run_parallel(runs: list[CrawlRun]) -> None:
     ready = threading.Condition()
     busy: set[int] = set()
     dead: set[int] = set()
+    failures: list[tuple[str, Exception]] = []
 
     def _best_available() -> int | None:
         candidates = [
@@ -157,9 +158,10 @@ def _run_parallel(runs: list[CrawlRun]) -> None:
             try:
                 run.run_chunk(WORKER_CHUNK)
             except Exception as exc:
-                logger.error("Seed %s failed; dropping: %s", run.site.url, exc)
+                logger.exception("Seed %s failed; dropping it", run.site.url)
                 with ready:
                     dead.add(index)
+                    failures.append((run.site.url, exc))
             finally:
                 with ready:
                     busy.discard(index)
@@ -176,6 +178,10 @@ def _run_parallel(runs: list[CrawlRun]) -> None:
             with ready:
                 ready.notify_all()
             raise
+
+    if failures:
+        failed_urls = ", ".join(url for url, _ in failures)
+        raise RuntimeError(f"Crawler finished with failed seed(s): {failed_urls}") from failures[0][1]
 
 
 def _finalize_runs(runs: list[CrawlRun]) -> None:

@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 from tuebingen_crawler import scheduler
 from tuebingen_crawler.models import Config
 from tuebingen_crawler.scheduler import _run_parallel
@@ -50,12 +52,13 @@ def test_global_scheduler_prefers_best_head_across_seeds(monkeypatch):
     assert log == ["b1", "b2", "b3", "a1", "a2"]
 
 
-def test_global_scheduler_drops_failing_seed_and_finishes():
+def test_global_scheduler_reports_failing_seed_after_finishing():
     log = []
     ok = FakeRun([(-2.0, "ok1"), (-1.0, "ok2")], log)
     bad = FakeRun([(-9.0, "bad1")], log, fail=True)
 
-    _run_parallel([ok, bad])
+    with pytest.raises(RuntimeError, match="https://fake.test/"):
+        _run_parallel([ok, bad])
 
     assert sorted(log) == ["ok1", "ok2"]
 
