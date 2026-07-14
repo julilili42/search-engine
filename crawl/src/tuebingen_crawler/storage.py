@@ -59,7 +59,7 @@ def load_robots(client: httpx.Client, url: str) -> RobotFileParser:
             parser.parse([])
         return parser
 
-    except httpx.RequestError as exc:
+    except (httpx.RequestError, httpx.InvalidURL) as exc:
         logger.warning("Could not fetch robots.txt for %s: %s", url, exc)
         parser.parse([])
         return parser

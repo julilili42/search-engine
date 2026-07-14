@@ -44,6 +44,15 @@ def test_load_robots_allows_all_when_robots_txt_is_unavailable(status_code):
     assert parser.can_fetch("*", "https://host/private")
 
 
+def test_load_robots_allows_all_for_unencodable_hostname():
+    # a malformed href (e.g. stray zero-width-space characters) can produce a
+    # netloc that httpx refuses to IDNA-encode; this must not crash the seed
+    with httpx.Client() as client:
+        parser = load_robots(client, "https://​host/")
+
+    assert parser.can_fetch("*", "https://​host/private")
+
+
 def test_robots_cache_is_per_origin():
     requests = []
 
