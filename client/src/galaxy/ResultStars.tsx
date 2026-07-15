@@ -7,6 +7,7 @@ import type { SearchResult } from "@/types"
 
 type ResultStarsProps = {
   results: SearchResult[]
+  revealed: boolean
 }
 
 const MIN_ORBIT = 3
@@ -19,10 +20,12 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 // any one of them nudges the whole cluster apart
 const CLUSTER_DISTANCE = 1.0
 const CLUSTER_SPREAD = 0.45
+// lower = slower, smoother easing toward the spread/collapsed position (see MathUtils.damp)
+const SPREAD_DAMP = 4
 // grace period before a spread cluster collapses back together, so moving the
 // cursor from one just-separated star to its neighbor doesn't snap them shut
 // again mid-transit
-const UNHOVER_GRACE_MS = 250
+const UNHOVER_GRACE_MS = 450
 
 function relevanceOf(result: SearchResult) {
   return result.embedding_score ?? result.score
@@ -153,10 +156,11 @@ type StarProps = {
   spreadOffset: [number, number, number]
   spreading: boolean
   delay: number
+  revealed: boolean
   onHoverChange: (hovered: boolean) => void
 }
 
-function Star({ result, unit, position, spreadOffset, spreading, delay, onHoverChange }: StarProps) {
+function Star({ result, unit, position, spreadOffset, spreading, delay, revealed, onHoverChange }: StarProps) {
   const groupRef = useRef<Group>(null!)
   const meshRef = useRef<Mesh>(null!)
   const [hovered, setHovered] = useState(false)
@@ -166,6 +170,14 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, onHoverC
   const mountedAt = useRef<number | null>(null)
 
   useFrame(({ clock }, delta) => {
+    // mounted early (while still warping) so the mesh's GPU buffers/shader
+    // get compiled ahead of the reveal instead of at it — kept at scale 0
+    // and the appear timer held off until the phase actually flips
+    if (!revealed) {
+      meshRef.current.scale.setScalar(0)
+      mountedAt.current = null
+      return
+    }
     if (mountedAt.current === null) mountedAt.current = clock.getElapsedTime()
     const elapsed = clock.getElapsedTime() - mountedAt.current
     const appear = MathUtils.clamp((elapsed - delay) / 0.6, 0, 1)
@@ -180,9 +192,9 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, onHoverC
     const target = spreading
       ? [position[0] + spreadOffset[0], position[1] + spreadOffset[1], position[2] + spreadOffset[2]]
       : position
-    groupRef.current.position.x = MathUtils.damp(groupRef.current.position.x, target[0], 6, delta)
-    groupRef.current.position.y = MathUtils.damp(groupRef.current.position.y, target[1], 6, delta)
-    groupRef.current.position.z = MathUtils.damp(groupRef.current.position.z, target[2], 6, delta)
+    groupRef.current.position.x = MathUtils.damp(groupRef.current.position.x, target[0], SPREAD_DAMP, delta)
+    groupRef.current.position.y = MathUtils.damp(groupRef.current.position.y, target[1], SPREAD_DAMP, delta)
+    groupRef.current.position.z = MathUtils.damp(groupRef.current.position.z, target[2], SPREAD_DAMP, delta)
   })
 
   function openResult() {
@@ -216,7 +228,7 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, onHoverC
   )
 }
 
-function ResultStars({ results }: ResultStarsProps) {
+function ResultStars({ results, revealed }: ResultStarsProps) {
   const placed = useMemo(() => layoutStars(results), [results])
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -252,6 +264,7 @@ function ResultStars({ results }: ResultStarsProps) {
           unit={unit}
           position={position}
           delay={delay}
+          revealed={revealed}
           spreading={activeCluster.includes(index)}
           spreadOffset={spreadOffsetFor(index, activeCluster, placed)}
           onHoverChange={(hovered) => handleHoverChange(index, hovered)}

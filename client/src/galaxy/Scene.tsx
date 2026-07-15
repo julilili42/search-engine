@@ -41,7 +41,11 @@ function CameraRig({ phase }: { phase: Phase }) {
       )
       tl.to(camera, { fov: WARP_CAMERA.fov, duration: WARP_DURATION, ease: "power3.in", onUpdate }, 0)
     } else if (phase === "results") {
-      camera.position.set(0, RESULTS_CAMERA.y, 0.15)
+      // no position.set() snap here on purpose — jumping the camera to a
+      // fixed point before tweening created a one-frame gap (galaxy/warp
+      // tunnel both just went invisible, stars not grown in yet) that read
+      // as a stutter; tweening straight from wherever the warp left off
+      // keeps the transition continuous
       tl.to(
         camera.position,
         { x: RESULTS_CAMERA.x, y: RESULTS_CAMERA.y, z: RESULTS_CAMERA.z, duration: 1.1, ease: "power3.out" },
@@ -85,7 +89,7 @@ function Scene({ phase, results }: SceneProps) {
       <Stars radius={50} depth={30} count={3800} factor={1.4} saturation={0} fade speed={0.25} />
       <GalaxyField visible={phase !== "results"} warpSpeed={phase === "warping" ? 6 : 1} />
       <WarpTunnel active={phase === "warping"} />
-      {phase === "results" && <ResultStars results={results} />}
+      {results.length > 0 && <ResultStars results={results} revealed={phase === "results"} />}
       <BloomEffect />
     </Canvas>
   )

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
-import { Search, Loader2, ExternalLink, Sparkles, CircleAlert, SearchX, ArrowLeft } from "lucide-react"
+import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
 import { CATEGORY_X_LABEL, CATEGORY_Y_LABEL } from "@/galaxy/categories"
@@ -65,11 +65,15 @@ function App() {
       const res = await fetch(searchUrl(q, categoryX, categoryY))
       if (!res.ok) throw new Error(`Suche fehlgeschlagen (HTTP ${res.status})`)
       const data: SearchResult[] = await res.json()
+      // set results as soon as they're known (even though we're still
+      // warping) so ResultStars mounts and warms up its GPU buffers/shaders
+      // ahead of time, instead of doing that work in the same frame the
+      // reveal happens — that's what caused the stutter at the transition
+      setResults(data)
 
       const remaining = MIN_WARP_MS - (Date.now() - start)
       if (remaining > 0) await sleep(remaining)
 
-      setResults(data)
       setSearched(true)
       setPhase(data.length > 0 ? "results" : "idle")
     } catch (err) {
@@ -114,9 +118,15 @@ function App() {
     <div className="flex h-svh w-svw overflow-hidden bg-[#05060d] text-white">
       <aside className="flex w-96 shrink-0 flex-col gap-4 overflow-hidden border-r border-white/10 bg-black/30 p-5 backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10">
-            <Sparkles className="size-4" />
-          </div>
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={phase === "idle"}
+            title="Back to galaxy"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 transition-colors enabled:hover:bg-white/20 disabled:cursor-default"
+          >
+            <Home className="size-4" />
+          </button>
           <div>
             <h1 className="text-base leading-tight font-semibold tracking-tight">Tübingen Search</h1>
             <p className="text-xs text-white/50">BM25F + semantic re-ranking</p>
@@ -196,18 +206,6 @@ function App() {
             key={flashNonce}
             className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
           />
-        )}
-        {phase !== "idle" && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={goBack}
-            className="absolute top-4 left-4 gap-1.5 rounded-full bg-black/30 text-white/70 backdrop-blur-sm hover:bg-black/50 hover:text-white"
-          >
-            <ArrowLeft className="size-4" />
-            Back to galaxy
-          </Button>
         )}
         {phase === "results" && (
           <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/40 uppercase">
