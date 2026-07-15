@@ -72,11 +72,10 @@ function CameraRig({ phase }: { phase: Phase }) {
 
 type SceneProps = {
   phase: Phase
-  query: string
   results: SearchResult[]
 }
 
-function Scene({ phase, query, results }: SceneProps) {
+function Scene({ phase, results }: SceneProps) {
   return (
     <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
       <color attach="background" args={["#05060d"]} />
@@ -86,7 +85,7 @@ function Scene({ phase, query, results }: SceneProps) {
       <Stars radius={50} depth={30} count={3500} factor={1.1} saturation={0} fade speed={0.25} />
       <GalaxyField visible={phase !== "results"} warpSpeed={phase === "warping" ? 6 : 1} />
       <WarpTunnel active={phase === "warping"} />
-      {phase === "results" && <ResultStars query={query} results={results} />}
+      {phase === "results" && <ResultStars results={results} />}
       <BloomEffect />
     </Canvas>
   )

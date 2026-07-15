@@ -42,8 +42,13 @@ def search_api(
     q: str = Query(min_length=1),
     top_n: int = Query(10, ge=1, le=100),
     context_size: int = Query(20, ge=1, le=100),
+    cat_x: str | None = Query(None, min_length=1),
+    cat_y: str | None = Query(None, min_length=1),
 ):
-    return search_index(app.state.index, q, top_n, context_size, app.state.doc_embeddings, app.state.category_axes)
+    category_axes = app.state.category_axes
+    if cat_x and cat_y and app.state.doc_embeddings is not None:
+        category_axes = embed_texts([cat_x, cat_y])
+    return search_index(app.state.index, q, top_n, context_size, app.state.doc_embeddings, category_axes)
 
 
 @app.get("/health")

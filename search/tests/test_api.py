@@ -55,6 +55,32 @@ def test_search_rejects_invalid_top_n(client):
     assert client.get("/search", params={"q": "apple", "top_n": 101}).status_code == 422
 
 
+def test_search_accepts_custom_category_axes(client, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+
+    def fake_embed(texts):
+        # 1 text -> query embedding, 2 texts -> a pair of category axes
+        return np.array([[1.0, 0.0]]) if len(texts) == 1 else np.array([[0.0, 1.0], [1.0, 0.0]])
+
+    monkeypatch.setattr("tuebingen_search.api.embed_texts", fake_embed)
+    monkeypatch.setattr(search_module, "embed_texts", fake_embed)
+    client.app.state.doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
+    client.app.state.category_axes = np.array([[1.0, 0.0], [0.0, 1.0]])
+
+    default_results = client.get("/search", params={"q": "banana cherry"}).json()
+    custom_results = client.get(
+        "/search", params={"q": "banana cherry", "cat_x": "custom x", "cat_y": "custom y"}
+    ).json()
+
+    default_coords = {r["path"]: (r["embedding_x"], r["embedding_y"]) for r in default_results}
+    custom_coords = {r["path"]: (r["embedding_x"], r["embedding_y"]) for r in custom_results}
+    assert default_coords != custom_coords
+
+
 def test_health_reports_document_count(client):
     response = client.get("/health")
 

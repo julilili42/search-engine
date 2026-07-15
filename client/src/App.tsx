@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
-import { Search, Loader2, ExternalLink, Sparkles, CircleAlert, SearchX } from "lucide-react"
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { Search, Loader2, ExternalLink, Sparkles, CircleAlert, SearchX, ArrowLeft } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
 import { CATEGORY_X_LABEL, CATEGORY_Y_LABEL } from "@/galaxy/categories"
@@ -29,6 +29,8 @@ function App() {
   const [searched, setSearched] = useState(false)
   const [phase, setPhase] = useState<Phase>("idle")
   const [flashNonce, setFlashNonce] = useState(0)
+  const [categoryX, setCategoryX] = useState(CATEGORY_X_LABEL)
+  const [categoryY, setCategoryY] = useState(CATEGORY_Y_LABEL)
   const prevPhase = useRef<Phase>("idle")
 
   useEffect(() => {
@@ -37,6 +39,17 @@ function App() {
     }
     prevPhase.current = phase
   }, [phase])
+
+  function searchUrl(q: string, catX: string, catY: string) {
+    const params = new URLSearchParams({ q, top_n: "10" })
+    // only send overrides when they actually differ, so the backend can keep
+    // using its cached default axis embeddings for the common case
+    if (catX !== CATEGORY_X_LABEL || catY !== CATEGORY_Y_LABEL) {
+      params.set("cat_x", catX)
+      params.set("cat_y", catY)
+    }
+    return `/search?${params}`
+  }
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault()
@@ -49,7 +62,7 @@ function App() {
 
     const start = Date.now()
     try {
-      const res = await fetch(`/search?q=${encodeURIComponent(q)}&top_n=10`)
+      const res = await fetch(searchUrl(q, categoryX, categoryY))
       if (!res.ok) throw new Error(`Suche fehlgeschlagen (HTTP ${res.status})`)
       const data: SearchResult[] = await res.json()
 
@@ -67,6 +80,32 @@ function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // re-split the current results onto a new pair of category axes, in place —
+  // no warp, no re-fetch of the search itself, just a fresh layout
+  async function applyCategories(catX: string, catY: string) {
+    const q = query.trim()
+    if (!q || phase !== "results") return
+    try {
+      const res = await fetch(searchUrl(q, catX, catY))
+      if (!res.ok) return
+      const data: SearchResult[] = await res.json()
+      setResults(data)
+    } catch {
+      // keep the previous layout if the recategorize request fails
+    }
+  }
+
+  function handleAxisKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") event.currentTarget.blur()
+  }
+
+  function goBack() {
+    setPhase("idle")
+    setSearched(false)
+    setResults([])
+    setError(null)
   }
 
   const showList = phase === "results" && results.length > 0
@@ -149,17 +188,49 @@ function App() {
       </aside>
 
       <main className="relative flex-1 overflow-hidden">
-        <Scene phase={phase} query={query} results={results} />
+        <Scene phase={phase} results={results} />
         {flashNonce > 0 && (
           <div
             key={flashNonce}
             className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
           />
         )}
+        {phase !== "idle" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={goBack}
+            className="absolute top-4 left-4 gap-1.5 rounded-full bg-black/30 text-white/70 backdrop-blur-sm hover:bg-black/50 hover:text-white"
+          >
+            <ArrowLeft className="size-4" />
+            Back to galaxy
+          </Button>
+        )}
         {phase === "results" && (
-          <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/35 uppercase">
-            <span className="absolute right-0 bottom-0">{CATEGORY_X_LABEL} →</span>
-            <span className="absolute top-0 left-0 [writing-mode:vertical-rl]">↑ {CATEGORY_Y_LABEL}</span>
+          <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/40 uppercase">
+            <div className="pointer-events-auto absolute right-0 bottom-0 flex items-center gap-1.5">
+              <input
+                value={categoryX}
+                onChange={(e) => setCategoryX(e.target.value)}
+                onBlur={() => applyCategories(categoryX, categoryY)}
+                onKeyDown={handleAxisKeyDown}
+                title="Click to change the X axis category"
+                className="w-56 bg-transparent text-right uppercase outline-none placeholder:text-white/30 focus:text-white/80"
+              />
+              <span>→</span>
+            </div>
+            <div className="pointer-events-auto absolute top-12 left-0 flex flex-col items-center gap-1.5">
+              <span>↑</span>
+              <input
+                value={categoryY}
+                onChange={(e) => setCategoryY(e.target.value)}
+                onBlur={() => applyCategories(categoryX, categoryY)}
+                onKeyDown={handleAxisKeyDown}
+                title="Click to change the Y axis category"
+                className="h-56 bg-transparent uppercase outline-none placeholder:text-white/30 focus:text-white/80 [writing-mode:vertical-rl]"
+              />
+            </div>
           </div>
         )}
       </main>

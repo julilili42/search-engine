@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState } from "react"
 import { useFrame } from "@react-three/fiber"
-import { Html, Line } from "@react-three/drei"
-import { Color, Mesh, MathUtils } from "three"
+import { Html } from "@react-three/drei"
+import { Color, Group, Mesh, MathUtils } from "three"
 
 import type { SearchResult } from "@/types"
 
 type ResultStarsProps = {
-  query: string
   results: SearchResult[]
 }
 
@@ -90,6 +89,7 @@ type StarProps = {
 }
 
 function Star({ result, unit, position, delay }: StarProps) {
+  const groupRef = useRef<Group>(null!)
   const meshRef = useRef<Mesh>(null!)
   const [hovered, setHovered] = useState(false)
   const color = useMemo(() => starColor(unit), [unit])
@@ -97,7 +97,7 @@ function Star({ result, unit, position, delay }: StarProps) {
   const seed = useMemo(() => Math.random() * 10, [])
   const mountedAt = useRef<number | null>(null)
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     if (mountedAt.current === null) mountedAt.current = clock.getElapsedTime()
     const elapsed = clock.getElapsedTime() - mountedAt.current
     const appear = MathUtils.clamp((elapsed - delay) / 0.6, 0, 1)
@@ -105,6 +105,12 @@ function Star({ result, unit, position, delay }: StarProps) {
     const twinkle = 1 + Math.sin(elapsed * 2 + seed * 7) * 0.08
     const hoverBoost = hovered ? 1.4 : 1
     meshRef.current.scale.setScalar(eased * twinkle * hoverBoost)
+
+    // ease toward the target position instead of snapping — matters when the
+    // user edits a category axis and the constellation reflows in place
+    groupRef.current.position.x = MathUtils.damp(groupRef.current.position.x, position[0], 4, delta)
+    groupRef.current.position.y = MathUtils.damp(groupRef.current.position.y, position[1], 4, delta)
+    groupRef.current.position.z = MathUtils.damp(groupRef.current.position.z, position[2], 4, delta)
   })
 
   function openResult() {
@@ -112,8 +118,7 @@ function Star({ result, unit, position, delay }: StarProps) {
   }
 
   return (
-    <group position={position}>
-      <Line points={[[0, 0, 0], [-position[0], -position[1], -position[2]]]} color="#fef9e7" opacity={0.05 + unit * 0.3} transparent lineWidth={1} />
+    <group ref={groupRef} position={position}>
       <mesh
         ref={meshRef}
         onClick={openResult}
@@ -134,19 +139,11 @@ function Star({ result, unit, position, delay }: StarProps) {
   )
 }
 
-function ResultStars({ query, results }: ResultStarsProps) {
+function ResultStars({ results }: ResultStarsProps) {
   const placed = useMemo(() => layoutStars(results), [results])
 
   return (
     <group>
-      <mesh>
-        <sphereGeometry args={[0.5, 24, 24]} />
-        <meshBasicMaterial color="#fbbf24" toneMapped={false} />
-      </mesh>
-      <Html distanceFactor={10} position={[0, -0.9, 0]} style={{ pointerEvents: "none" }}>
-        <div className="text-sm font-medium whitespace-nowrap text-white/90">{query}</div>
-      </Html>
-
       {placed.map(({ result, unit, position, delay }) => (
         <Star key={`${result.rank}-${result.path}`} result={result} unit={unit} position={position} delay={delay} />
       ))}
