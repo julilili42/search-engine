@@ -79,3 +79,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes twinkle {
+  from {
+    opacity: var(--twinkle-min, 0.3);
+  }
+  to {
+    opacity: var(--twinkle-max, 1);
+  }
+}
+
+@keyframes star-appear {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
