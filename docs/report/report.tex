@@ -1,0 +1,177 @@
+%%% Based on the 2025 ICML template, available at https://icml.cc/Conferences/2025/AuthorInstructions %%%
+
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs} % for professional tables
+\usepackage{xcolor}
+
+% Corporate Design of the University of Tübingen
+% Primary Colors
+\definecolor{TUred}{RGB}{165,30,55}
+\definecolor{TUgold}{RGB}{180,160,105}
+\definecolor{TUdark}{RGB}{50,65,75}
+\definecolor{TUgray}{RGB}{175,179,183}
+
+% Secondary Colors
+\definecolor{TUdarkblue}{RGB}{65,90,140}
+\definecolor{TUblue}{RGB}{0,105,170}
+\definecolor{TUlightblue}{RGB}{80,170,200}
+\definecolor{TUlightgreen}{RGB}{130,185,160}
+\definecolor{TUgreen}{RGB}{125,165,75}
+\definecolor{TUdarkgreen}{RGB}{50,110,30}
+\definecolor{TUocre}{RGB}{200,80,60}
+\definecolor{TUviolet}{RGB}{175,110,150}
+\definecolor{TUmauve}{RGB}{180,160,150}
+\definecolor{TUbeige}{RGB}{215,180,105}
+\definecolor{TUorange}{RGB}{210,150,0}
+\definecolor{TUbrown}{RGB}{145,105,70}
+
+
+% tighten figure spacing
+\setlength{\floatsep}{6pt}
+\setlength{\textfloatsep}{8pt}
+\setlength{\intextsep}{6pt}
+
+% tighten caption spacing
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
+
+
+% hyperref makes hyperlinks in the resulting PDF.
+% If your build breaks (sometimes temporarily if a hyperlink spans a page)
+% please comment out the following usepackage line and replace
+% \usepackage{icml2023} with \usepackage[nohyperref]{icml2023} above.
+\usepackage{hyperref}
+
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+
+\usepackage[accepted]{icml2025}
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Tübingen Search Engine Report}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{TODO: Project Title}
+
+\icmlsetsymbol{equal}{*}
+
+\begin{icmlauthorlist}
+\icmlauthor{TODO Name}{equal,first}
+\icmlauthor{TODO Name}{equal,second}
+\icmlauthor{TODO Name}{equal,third}
+\icmlauthor{TODO Name}{equal,fourth}
+\end{icmlauthorlist}
+
+% fill in your matrikelnummer, email address, degree, for each group member
+\icmlaffiliation{first}{Matrikelnummer TODO, TODO Degree}
+\icmlaffiliation{second}{Matrikelnummer TODO, TODO Degree}
+\icmlaffiliation{third}{Matrikelnummer TODO, TODO Degree}
+\icmlaffiliation{fourth}{Matrikelnummer TODO, TODO Degree}
+
+% put your email addresses here. You can use initials to save space,
+% DO USE YOUR UNIVERSITY EMAIL ADDRESS!
+\icmlcorrespondingauthor{TODO}{todo@student.uni-tuebingen.de}
+
+% You may provide any keywords that you
+% find helpful for describing your paper; these are used to populate
+% the "keywords" metadata in the PDF but will not be shown in the document
+\icmlkeywords{Information Retrieval, Search Engines, Modern Search Engines}
+
+\vskip 0.3in
+]
+
+\begin{abstract}
+TODO: One paragraph summarizing the problem (search English, Tübingen-related
+content), your approach (crawler, first-stage retrieval, second-stage
+re-ranking, UI innovation), and your headline evaluation result. \footnote{Source
+files are publicly available in the \href{https://github.com/julilili42/search-engine}{\textcolor{TUred}{project repository}}.}
+\end{abstract}
+
+
+\section{Introduction}\label{sec:intro}
+
+TODO: Motivate the task (building a focused search engine for English,
+Tübingen-related web content), state what makes it hard, and preview your
+contributions across the four graded components (crawling/indexing, query
+processing, result presentation, evaluation).
+
+\section{Web Crawling and Indexing}\label{sec:crawling}
+
+TODO: Describe the crawler (seed set, frontier strategy, politeness/robots.txt
+handling, resumability), the page/link filtering approach, deduplication, and
+what is stored in the local index. Justify design choices against alternatives
+you considered.
+
+\section{Query Processing}\label{sec:retrieval}
+
+TODO: Describe the self-implemented classical first-stage retrieval model
+(e.g. BM25/BM25F) and the retrieval-model innovation required beyond
+BM25/TF-IDF (e.g. proximity scoring, pseudo-relevance feedback,
+embedding-based second-stage re-ranking). Justify why each signal was chosen
+and how first- and second-stage are combined.
+
+\subsection*{Batch Query Format}
+TODO: Note support for the required tab-separated batch query input
+(\texttt{query\_id<TAB>query text}) and batch result output
+(\texttt{query\_id<TAB>rank<TAB>url<TAB>score}).
+
+\section{Search Result Presentation}\label{sec:ui}
+
+TODO: Describe the interactive UI and the specific innovation that goes
+beyond a plain ranked list (e.g. facets, explanations, snippet highlighting).
+Include screenshots (required by the grading rubric).
+
+\begin{figure}[t]
+    \centering
+    \caption{TODO: Screenshot of the search UI.}
+    %\includegraphics[width=\columnwidth]{img/ui_screenshot.png}
+    \label{fig:ui}
+\end{figure}
+
+\section{Evaluation}\label{sec:evaluation}
+
+TODO: Describe your qrels/benchmark setup, the metrics used (nDCG@10,
+nDCG@20, MRR@10, ...), and report results comparing your baseline against
+each ranking improvement. Reference the known evaluation queries
+("t\"ubingen attractions", "food and drinks") and note expected live-query
+behavior/runtime (target $\leq$~1 min/query).
+
+\begin{table}[t]
+\centering
+\caption{TODO: Retrieval effectiveness by system variant.}
+\label{tab:results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Variant} & \textbf{nDCG@10} & \textbf{MRR@10} \\
+\midrule
+BM25 baseline & TODO & TODO \\
++ TODO signal & TODO & TODO \\
++ TODO signal & TODO & TODO \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}\label{sec:conclusion}
+
+TODO: Summarize what worked, what didn't, and known limitations.
+
+\section*{Contribution Statement}
+TODO: State who was responsible for which components.
+\printAffiliationsAndNotice{\icmlEqualContribution}
+
+\bibliography{bibliography}
+\bibliographystyle{icml2025}
+
+\end{document}
+
+% This document was modified from the files available at https://icml.cc/Conferences/2025/AuthorInstructions
+% the full copyright notice is available within the file icml2025.sty
