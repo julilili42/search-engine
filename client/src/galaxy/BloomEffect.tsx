@@ -11,7 +11,7 @@ function BloomEffect() {
   const composer = useMemo(() => {
     const instance = new EffectComposer(gl)
     instance.addPass(new RenderPass(scene, camera))
-    instance.addPass(new UnrealBloomPass(new Vector2(size.width, size.height), 1.5, 0.7, 0.1))
+    instance.addPass(new UnrealBloomPass(new Vector2(size.width, size.height), 2.4, 0.85, 0.08))
     return instance
   }, [gl, scene, camera])
 

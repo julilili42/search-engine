@@ -13,8 +13,11 @@ import BloomEffect from "./BloomEffect"
 export type Phase = "idle" | "warping" | "results"
 
 const IDLE_CAMERA = { x: 0, y: 2, z: 11, fov: 45 }
-const WARP_CAMERA = { z: 2.2, fov: 120 }
+// slight x/y drift while warping so it reads as swooping toward a region of
+// the galaxy, not a dead-straight dive through the core
+const WARP_CAMERA = { x: 1.6, y: 0.6, z: 1.8, fov: 132 }
 const RESULTS_CAMERA = { x: 0, y: 3.5, z: 15, fov: 50 }
+const WARP_DURATION = 1.6
 
 // mirrors the reference portfolio's camera.fov = MathUtils.lerp(...) + updateProjectionMatrix()
 // zoom trick, driven by gsap tweens instead of a manual per-frame lerp
@@ -30,8 +33,13 @@ function CameraRig({ phase }: { phase: Phase }) {
     const tl = gsap.timeline()
 
     if (phase === "warping") {
-      tl.to(camera.position, { z: WARP_CAMERA.z, duration: 0.9, ease: "power2.in" }, 0)
-      tl.to(camera, { fov: WARP_CAMERA.fov, duration: 0.9, ease: "power2.in", onUpdate }, 0)
+      // strong ease-in: starts slow, accelerates hard into the galaxy — a launch, not a punch
+      tl.to(
+        camera.position,
+        { x: WARP_CAMERA.x, y: WARP_CAMERA.y, z: WARP_CAMERA.z, duration: WARP_DURATION, ease: "power4.in" },
+        0,
+      )
+      tl.to(camera, { fov: WARP_CAMERA.fov, duration: WARP_DURATION, ease: "power3.in", onUpdate }, 0)
     } else if (phase === "results") {
       camera.position.set(0, RESULTS_CAMERA.y, 0.15)
       tl.to(
@@ -75,7 +83,7 @@ function Scene({ phase, query, results }: SceneProps) {
       <PerspectiveCamera makeDefault position={[IDLE_CAMERA.x, IDLE_CAMERA.y, IDLE_CAMERA.z]} fov={IDLE_CAMERA.fov} near={0.05} far={200} />
       <CameraRig phase={phase} />
       <ambientLight intensity={0.5} />
-      <Stars radius={80} depth={50} count={2500} factor={2} fade speed={0.4} />
+      <Stars radius={50} depth={30} count={3500} factor={1.1} saturation={0} fade speed={0.25} />
       <GalaxyField visible={phase !== "results"} warpSpeed={phase === "warping" ? 6 : 1} />
       <WarpTunnel active={phase === "warping"} />
       {phase === "results" && <ResultStars query={query} results={results} />}

@@ -5,12 +5,19 @@ import { LineSegments } from "three"
 const STREAK_COUNT = 450
 const SPREAD = 14
 const DEPTH = 40
-const STREAK_LENGTH = 1.4
-const SPEED = 22
 const RESET_Z = 4
+const RAMP_DURATION = 1.6 // seconds to reach full speed — sells the "accelerating" feel
+const MIN_SPEED = 2
+const MAX_SPEED = 36
+const MIN_STREAK_LENGTH = 0.3
+const MAX_STREAK_LENGTH = 2.6
 
 function randomOffset() {
   return (Math.random() - 0.5) * SPREAD
+}
+
+function easeInCubic(t: number) {
+  return t * t * t
 }
 
 type WarpTunnelProps = {
@@ -19,6 +26,7 @@ type WarpTunnelProps = {
 
 function WarpTunnel({ active }: WarpTunnelProps) {
   const lineRef = useRef<LineSegments>(null!)
+  const rampStart = useRef<number | null>(null)
 
   const { positions, seeds } = useMemo(() => {
     const positions = new Float32Array(STREAK_COUNT * 2 * 3)
@@ -31,11 +39,20 @@ function WarpTunnel({ active }: WarpTunnelProps) {
     return { positions, seeds }
   }, [])
 
-  useFrame((_, delta) => {
-    if (!active || !lineRef.current) return
+  useFrame(({ clock }, delta) => {
+    if (!active || !lineRef.current) {
+      rampStart.current = null
+      return
+    }
+    if (rampStart.current === null) rampStart.current = clock.getElapsedTime()
+
+    const progress = Math.min((clock.getElapsedTime() - rampStart.current) / RAMP_DURATION, 1)
+    const eased = easeInCubic(progress)
+    const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * eased
+    const streakLength = MIN_STREAK_LENGTH + (MAX_STREAK_LENGTH - MIN_STREAK_LENGTH) * eased
 
     for (let i = 0; i < STREAK_COUNT; i++) {
-      seeds[i * 3 + 2] += delta * SPEED
+      seeds[i * 3 + 2] += delta * speed
       if (seeds[i * 3 + 2] > RESET_Z) {
         seeds[i * 3] = randomOffset()
         seeds[i * 3 + 1] = randomOffset()
@@ -50,7 +67,7 @@ function WarpTunnel({ active }: WarpTunnelProps) {
       positions[i6 + 2] = z
       positions[i6 + 3] = x
       positions[i6 + 4] = y
-      positions[i6 + 5] = z - STREAK_LENGTH
+      positions[i6 + 5] = z - streakLength
     }
     lineRef.current.geometry.attributes.position.needsUpdate = true
   })

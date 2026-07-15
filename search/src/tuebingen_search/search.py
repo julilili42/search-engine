@@ -30,6 +30,11 @@ RERANK_CANDIDATES = 100
 ALPHA = float(os.environ.get("RERANK_ALPHA", "0.5"))
 RRF_K = 60
 
+# fixed category axes the result "constellation" is placed on: how strongly a
+# result matches each label becomes its x/y coordinate in the universe view
+CATEGORY_X_LABEL = "university, research and administration"
+CATEGORY_Y_LABEL = "tourism, culture and everyday life"
+
 
 def search_index(
     index: SearchIndex,
@@ -37,6 +42,7 @@ def search_index(
     top_n: int,
     context_size: int = 20,
     doc_embeddings: np.ndarray | None = None,
+    category_axes: np.ndarray | None = None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -68,12 +74,13 @@ def search_index(
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
 
-    # 2D layout of the *result* embeddings so results that are semantically close
-    # end up close together on screen ("constellations" instead of a rank spiral)
+    # place each result on fixed category axes (how strongly it matches
+    # CATEGORY_X_LABEL / CATEGORY_Y_LABEL) so the constellation reflects
+    # meaningful topics instead of an arbitrary rank spiral
     embedding_coords: dict[int, tuple[float, float]] = {}
-    if doc_embeddings is not None and ranked_results:
+    if doc_embeddings is not None and category_axes is not None and ranked_results:
         doc_indices = [doc_index for doc_index, _ in ranked_results]
-        coords = project_2d(doc_embeddings[doc_indices])
+        coords = project_onto_categories(doc_embeddings[doc_indices], category_axes[0], category_axes[1])
         embedding_coords = dict(zip(doc_indices, coords))
 
     search_results: list[SearchResult] = []
@@ -123,18 +130,23 @@ def rerank(
     return [(doc_indices[i], float(blended[i]), float(cosine[i])) for i in order]
 
 
-def project_2d(vectors: np.ndarray) -> list[tuple[float, float]]:
-    """PCA onto 2 components so semantically similar results land near each other."""
-    if len(vectors) < 2:
-        return [(0.0, 0.0)] * len(vectors)
+def project_onto_categories(
+    vectors: np.ndarray, x_axis: np.ndarray, y_axis: np.ndarray
+) -> list[tuple[float, float]]:
+    """Place each vector by how strongly it matches two named category embeddings."""
+    if len(vectors) == 0:
+        return []
 
-    centered = vectors - vectors.mean(axis=0)
-    _, _, top_components = np.linalg.svd(centered, full_matrices=False)
-    coords = centered @ top_components[:2].T
+    def center_and_scale(values: np.ndarray) -> np.ndarray:
+        centered = values - values.mean()
+        std = values.std() or 1.0
+        # tanh instead of max-abs: a single outlier saturates gracefully instead of
+        # linearly compressing every near-duplicate result onto the same point
+        return np.tanh(centered / (2 * std))
 
-    span = np.abs(coords).max() or 1.0
-    coords /= span
-    return [(float(x), float(y)) for x, y in coords]
+    xs = center_and_scale(vectors @ x_axis)
+    ys = center_and_scale(vectors @ y_axis)
+    return list(zip((float(x) for x in xs), (float(y) for y in ys)))
 
 
 def reciprocal_rank_fusion(lexical: np.ndarray, cosine: np.ndarray, k: int = RRF_K) -> np.ndarray:
@@ -149,7 +161,8 @@ def reciprocal_rank_fusion(lexical: np.ndarray, cosine: np.ndarray, k: int = RRF
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     index = load_index(index_path)
     doc_embeddings = load_embeddings(DEFAULT_EMBEDDINGS_PATH, index.documents)
-    return search_index(index, query, top_n, context_size, doc_embeddings)
+    category_axes = embed_texts([CATEGORY_X_LABEL, CATEGORY_Y_LABEL]) if doc_embeddings is not None else None
+    return search_index(index, query, top_n, context_size, doc_embeddings, category_axes)
 
 
 def best_window(term_positions: TermPosition) -> tuple[int, int] | None:

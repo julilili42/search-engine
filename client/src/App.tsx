@@ -1,12 +1,15 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Search, Loader2, ExternalLink, Sparkles, CircleAlert, SearchX } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
+import { CATEGORY_X_LABEL, CATEGORY_Y_LABEL } from "@/galaxy/categories"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { SearchResult } from "@/types"
 
-const MIN_WARP_MS = 1300
+// keep in sync with WARP_DURATION in galaxy/Scene.tsx so results never arrive
+// before the camera has finished accelerating in
+const MIN_WARP_MS = 1750
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function displayHost(result: SearchResult) {
@@ -25,6 +28,15 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
   const [phase, setPhase] = useState<Phase>("idle")
+  const [flashNonce, setFlashNonce] = useState(0)
+  const prevPhase = useRef<Phase>("idle")
+
+  useEffect(() => {
+    if (prevPhase.current === "warping" && phase === "results") {
+      setFlashNonce((n) => n + 1)
+    }
+    prevPhase.current = phase
+  }, [phase])
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault()
@@ -136,8 +148,20 @@ function App() {
         </div>
       </aside>
 
-      <main className="relative flex-1">
+      <main className="relative flex-1 overflow-hidden">
         <Scene phase={phase} query={query} results={results} />
+        {flashNonce > 0 && (
+          <div
+            key={flashNonce}
+            className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
+          />
+        )}
+        {phase === "results" && (
+          <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/35 uppercase">
+            <span className="absolute right-0 bottom-0">{CATEGORY_X_LABEL} →</span>
+            <span className="absolute top-0 left-0 [writing-mode:vertical-rl]">↑ {CATEGORY_Y_LABEL}</span>
+          </div>
+        )}
       </main>
     </div>
   )

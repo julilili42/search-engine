@@ -12,6 +12,7 @@ type ResultStarsProps = {
 
 const MIN_ORBIT = 3
 const MAX_ORBIT = 9
+const AXIS_SPREAD = 7
 // golden angle: spreads points around the center without overlapping spokes,
 // used as a fallback when embedding coordinates aren't available
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
@@ -25,6 +26,12 @@ function normalize(values: number[]) {
   const max = Math.max(...values)
   const span = max - min || 1
   return (value: number) => (value - min) / span
+}
+
+// deterministic pseudo-random in [-1, 1], stable across re-renders
+function seeded(seed: number) {
+  const x = Math.sin(seed * 12.9898) * 43758.5453
+  return (x - Math.floor(x)) * 2 - 1
 }
 
 function displayHost(result: SearchResult) {
@@ -49,32 +56,27 @@ function layoutStars(results: SearchResult[]) {
 
   return results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))
-    const orbit = MIN_ORBIT + (1 - unit) * (MAX_ORBIT - MIN_ORBIT)
 
-    let dirX: number
-    let dirZ: number
+    // the constellation shape is the two named category axes (embedding_x/y);
+    // relevance only drives size/brightness, not placement, so the axes stay legible
+    let x: number
+    let y: number
     if (hasEmbeddingCoords) {
-      const ex = result.embedding_x!
-      const ez = result.embedding_y!
-      const len = Math.hypot(ex, ez)
-      if (len > 1e-6) {
-        dirX = ex / len
-        dirZ = ez / len
-      } else {
-        const angle = index * GOLDEN_ANGLE
-        dirX = Math.cos(angle)
-        dirZ = Math.sin(angle)
-      }
+      x = result.embedding_x! * AXIS_SPREAD
+      y = result.embedding_y! * AXIS_SPREAD
     } else {
       const angle = index * GOLDEN_ANGLE
-      dirX = Math.cos(angle)
-      dirZ = Math.sin(angle)
+      const orbit = MIN_ORBIT + (1 - unit) * (MAX_ORBIT - MIN_ORBIT)
+      x = Math.cos(angle) * orbit
+      y = Math.sin(angle) * orbit
     }
+    // slight deterministic depth jitter so the constellation isn't a perfectly flat card
+    const z = seeded(index * 3.1) * 0.8
 
     return {
       result,
       unit,
-      position: [dirX * orbit, (unit - 0.5) * 1.8, dirZ * orbit] as [number, number, number],
+      position: [x, y, z] as [number, number, number],
       delay: 0.1 + index * 0.08,
     }
   })
