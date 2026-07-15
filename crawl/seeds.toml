@@ -26,6 +26,11 @@ request_delay = 0.5
 
 # Tourism & attractions
 [[sites]]
+url = "https://www.tripadvisor.com/Tourism-g198539-Tubingen_Baden_Wurttemberg-Vacations.html"
+max_pages_per_seed = 150
+request_delay = 0.5
+
+[[sites]]
 url = "https://www.roughguides.com/germany/baden-wurttemberg/tubingen/"
 max_pages_per_seed = 150
 request_delay = 0.5
@@ -36,7 +41,7 @@ max_pages_per_seed = 400
 request_delay = 0.5
 
 [[sites]]
-url = "https://www.visit-bw.com/"
+url = "https://www.visit-bw.com/en/article/old-town-of-tubingen/c82ceb67-f78d-4b4e-8911-3972ca794cbc#/"
 max_pages_per_seed = 300
 request_delay = 0.5
 
@@ -212,6 +217,11 @@ request_delay = 0.5
 
 [[sites]]
 url = "https://www.shothotspot.com/hotspot/?hotspot=25066"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.geschichtswerkstatt-tuebingen.de/en"
 max_pages_per_seed = 240
 request_delay = 0.5
 
@@ -571,6 +581,11 @@ request_delay = 0.5
 url = "http://www.wissenschaftscampus-tuebingen.de/www/en/"
 max_pages_per_seed = 100
 request_delay = 0.5
+
+[[sites]]
+url = "https://www.dai-tuebingen.de/en/"
+max_pages_per_seed = 100
+request_delay = 0.7
 
 [[sites]]
 url = "https://minerva4ai.eu/tuebingenai/"

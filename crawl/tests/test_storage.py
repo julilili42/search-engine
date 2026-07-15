@@ -53,6 +53,17 @@ def test_load_robots_allows_all_for_unencodable_hostname():
     assert parser.can_fetch("*", "https://​host/private")
 
 
+def test_load_robots_allows_all_for_oversized_hostname_label():
+    # a garbage href with a too-long label makes stdlib getaddrinfo() raise a
+    # raw UnicodeEncodeError deep inside socket.create_connection, which
+    # httpx does not wrap into httpx.InvalidURL; this must not crash the seed
+    url = "https://" + "a" * 100 + ".example/"
+    with httpx.Client() as client:
+        parser = load_robots(client, url)
+
+    assert parser.can_fetch("*", url + "private")
+
+
 def test_robots_cache_is_per_origin():
     requests = []
 
