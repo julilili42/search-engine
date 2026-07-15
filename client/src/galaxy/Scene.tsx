@@ -17,7 +17,11 @@ const IDLE_CAMERA = { x: 0, y: 2, z: 11, fov: 45 }
 // the galaxy, not a dead-straight dive through the core
 const WARP_CAMERA = { x: 1.6, y: 0.6, z: 1.8, fov: 132 }
 const RESULTS_CAMERA = { x: 0, y: 3.5, z: 15, fov: 50 }
-const WARP_DURATION = 1.6
+// must match MIN_WARP_MS in App.tsx exactly: the tween uses an accelerating
+// ease, so if it finishes before results arrive the camera goes dead-still
+// at peak speed and holds there — that stop-dead moment is what read as a
+// stutter, not a dropped frame
+const WARP_DURATION = 1.75
 
 // mirrors the reference portfolio's camera.fov = MathUtils.lerp(...) + updateProjectionMatrix()
 // zoom trick, driven by gsap tweens instead of a manual per-frame lerp
