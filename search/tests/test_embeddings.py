@@ -10,7 +10,7 @@ from tuebingen_search.embeddings import (
     _mean_pool,
     embed_texts,
     load_embeddings,
-    split_passages,
+    _split_passages,
 )
 from tuebingen_search.models import Document
 
@@ -89,7 +89,7 @@ def test_load_embeddings_adapts_legacy_document_vectors(tmp_path):
 
 
 def test_split_passages_overlaps_and_caps_windows():
-    passages = split_passages('abcdefghij', passage_chars=4, overlap=1, max_passages=3)
+    passages = _split_passages('abcdefghij', passage_chars=4, overlap=1, max_passages=3)
 
     assert passages == ['abcd', 'defg', 'ghij']
 
@@ -113,6 +113,6 @@ def test_embed_texts_mean_pools_and_normalizes(monkeypatch):
                 last_hidden_state=torch.tensor([[[3.0, 4.0], [0.0, 0.0], [99.0, 99.0]]] * batch_size)
             )
 
-    monkeypatch.setattr("tuebingen_search.embeddings.get_model", lambda: (Tokenizer(), Model()))
+    monkeypatch.setattr("tuebingen_search.embeddings._get_model", lambda: (Tokenizer(), Model()))
 
     assert np.allclose(embed_texts(["example"] * (BATCH_SIZE + 1)), [[0.6, 0.8]] * (BATCH_SIZE + 1))

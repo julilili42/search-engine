@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
-from .embeddings import embed_texts, get_model, load_embeddings
+from .embeddings import _get_model, embed_texts, load_embeddings
 from .search import SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
 
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
         logger.warning("No embeddings at %s, serving lexical ranking only.", embeddings_path)
     else:
         logger.info("Loading embedding model...")
-        get_model()
+        _get_model()
     yield
 
 

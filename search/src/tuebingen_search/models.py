@@ -17,6 +17,7 @@ AverageFieldLengths = dict[DocumentField, float]
 TermPosition = dict[str, list[int]]
 DocumentScores = dict[int, float]
 DocumentTermPositions = dict[int, TermPosition]
+ScoredDocument = tuple[int, float]
 
 
 @dataclass(frozen=True)
