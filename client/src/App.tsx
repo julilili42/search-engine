@@ -172,7 +172,7 @@ function App() {
                 href={result.url ?? undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="block rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
+                className="group block rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
@@ -181,7 +181,9 @@ function App() {
                   </span>
                   <ExternalLink className="size-3 shrink-0 text-white/40" />
                 </div>
-                <p className="mt-0.5 line-clamp-1 text-xs text-white/50">{result.snippet}</p>
+                <p className="mt-0.5 line-clamp-1 text-xs text-white/50 group-hover:line-clamp-2">
+                  {result.snippet}
+                </p>
               </a>
             ))}
         </div>

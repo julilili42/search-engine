@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useFrame } from "@react-three/fiber"
 import { Html } from "@react-three/drei"
 import { Color, Group, Mesh, MathUtils } from "three"
@@ -15,6 +15,14 @@ const AXIS_SPREAD = 7
 // golden angle: spreads points around the center without overlapping spokes,
 // used as a fallback when embedding coordinates aren't available
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+// stars this close together are hard to pick apart with the cursor — hovering
+// any one of them nudges the whole cluster apart
+const CLUSTER_DISTANCE = 1.0
+const CLUSTER_SPREAD = 0.45
+// grace period before a spread cluster collapses back together, so moving the
+// cursor from one just-separated star to its neighbor doesn't snap them shut
+// again mid-transit
+const UNHOVER_GRACE_MS = 250
 
 function relevanceOf(result: SearchResult) {
   return result.embedding_score ?? result.score
@@ -64,11 +72,18 @@ function starColor(unit: number) {
   return new Color(STAR_COLOR_STOPS[STAR_COLOR_STOPS.length - 1][1])
 }
 
+// XY only: the depth jitter is a few tenths of a unit purely for visual variety and
+// barely moves the on-screen projection at this camera distance, so it shouldn't be
+// able to hide an otherwise-overlapping pair from cluster detection
+function screenDistance(a: [number, number, number], b: [number, number, number]) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1])
+}
+
 function layoutStars(results: SearchResult[]) {
   const toUnit = normalize(results.map(relevanceOf))
   const hasEmbeddingCoords = results.every((r) => r.embedding_x !== null && r.embedding_y !== null)
 
-  return results.map((result, index) => {
+  const placed = results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))
 
     // the constellation shape is the two named category axes (embedding_x/y);
@@ -94,16 +109,54 @@ function layoutStars(results: SearchResult[]) {
       delay: 0.1 + index * 0.08,
     }
   })
+
+  // stars close enough to be hard to pick apart, keyed by index into `placed`
+  const neighbors = placed.map((p, i) =>
+    placed.flatMap((q, j) => (i !== j && screenDistance(p.position, q.position) < CLUSTER_DISTANCE ? [j] : [])),
+  )
+
+  return placed.map((p, i) => ({ ...p, neighbors: neighbors[i] }))
+}
+
+// nudges every member of the active cluster radially away from the cluster's
+// centroid, so overlapping stars fan out and become individually clickable
+function spreadOffsetFor(
+  index: number,
+  clusterIndices: number[],
+  placed: { position: [number, number, number] }[],
+) {
+  if (clusterIndices.length < 2) return [0, 0, 0] as [number, number, number]
+
+  const centroid = clusterIndices.reduce(
+    (sum, i) => [sum[0] + placed[i].position[0], sum[1] + placed[i].position[1]],
+    [0, 0],
+  )
+  centroid[0] /= clusterIndices.length
+  centroid[1] /= clusterIndices.length
+
+  const [px, py] = placed[index].position
+  const dx = px - centroid[0]
+  const dy = py - centroid[1]
+  const len = Math.hypot(dx, dy)
+  if (len > 1e-4) {
+    return [(dx / len) * CLUSTER_SPREAD, (dy / len) * CLUSTER_SPREAD, 0] as [number, number, number]
+  }
+  // stars sitting exactly on the centroid (near-identical coords) fan out by angle instead
+  const angle = index * GOLDEN_ANGLE
+  return [Math.cos(angle) * CLUSTER_SPREAD, Math.sin(angle) * CLUSTER_SPREAD, 0] as [number, number, number]
 }
 
 type StarProps = {
   result: SearchResult
   unit: number
   position: [number, number, number]
+  spreadOffset: [number, number, number]
+  spreading: boolean
   delay: number
+  onHoverChange: (hovered: boolean) => void
 }
 
-function Star({ result, unit, position, delay }: StarProps) {
+function Star({ result, unit, position, spreadOffset, spreading, delay, onHoverChange }: StarProps) {
   const groupRef = useRef<Group>(null!)
   const meshRef = useRef<Mesh>(null!)
   const [hovered, setHovered] = useState(false)
@@ -121,25 +174,34 @@ function Star({ result, unit, position, delay }: StarProps) {
     const hoverBoost = hovered ? 1.4 : 1
     meshRef.current.scale.setScalar(eased * twinkle * hoverBoost)
 
-    // ease toward the target position instead of snapping — matters when the
-    // user edits a category axis and the constellation reflows in place
-    groupRef.current.position.x = MathUtils.damp(groupRef.current.position.x, position[0], 4, delta)
-    groupRef.current.position.y = MathUtils.damp(groupRef.current.position.y, position[1], 4, delta)
-    groupRef.current.position.z = MathUtils.damp(groupRef.current.position.z, position[2], 4, delta)
+    // ease toward the target position instead of snapping — matters both when
+    // the user edits a category axis (reflow) and when a crowded cluster
+    // spreads apart on hover
+    const target = spreading
+      ? [position[0] + spreadOffset[0], position[1] + spreadOffset[1], position[2] + spreadOffset[2]]
+      : position
+    groupRef.current.position.x = MathUtils.damp(groupRef.current.position.x, target[0], 6, delta)
+    groupRef.current.position.y = MathUtils.damp(groupRef.current.position.y, target[1], 6, delta)
+    groupRef.current.position.z = MathUtils.damp(groupRef.current.position.z, target[2], 6, delta)
   })
 
   function openResult() {
     if (result.url) window.open(result.url, "_blank", "noopener,noreferrer")
   }
 
+  function handlePointerOver() {
+    setHovered(true)
+    onHoverChange(true)
+  }
+
+  function handlePointerOut() {
+    setHovered(false)
+    onHoverChange(false)
+  }
+
   return (
     <group ref={groupRef} position={position}>
-      <mesh
-        ref={meshRef}
-        onClick={openResult}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
-      >
+      <mesh ref={meshRef} onClick={openResult} onPointerOver={handlePointerOver} onPointerOut={handlePointerOut}>
         <sphereGeometry args={[size, 16, 16]} />
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
@@ -156,11 +218,44 @@ function Star({ result, unit, position, delay }: StarProps) {
 
 function ResultStars({ results }: ResultStarsProps) {
   const placed = useMemo(() => layoutStars(results), [results])
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (clearTimer.current !== null) clearTimeout(clearTimer.current)
+    }
+  }, [])
+
+  function handleHoverChange(index: number, hovered: boolean) {
+    if (clearTimer.current !== null) {
+      clearTimeout(clearTimer.current)
+      clearTimer.current = null
+    }
+    if (hovered) {
+      setHoveredIndex(index)
+    } else {
+      // grace period so the cursor can travel to a just-separated neighbor
+      // without the cluster collapsing back together mid-move
+      clearTimer.current = setTimeout(() => setHoveredIndex(null), UNHOVER_GRACE_MS)
+    }
+  }
+
+  const activeCluster = hoveredIndex === null ? [] : [hoveredIndex, ...placed[hoveredIndex].neighbors]
 
   return (
     <group>
-      {placed.map(({ result, unit, position, delay }) => (
-        <Star key={`${result.rank}-${result.path}`} result={result} unit={unit} position={position} delay={delay} />
+      {placed.map(({ result, unit, position, delay }, index) => (
+        <Star
+          key={`${result.rank}-${result.path}`}
+          result={result}
+          unit={unit}
+          position={position}
+          delay={delay}
+          spreading={activeCluster.includes(index)}
+          spreadOffset={spreadOffsetFor(index, activeCluster, placed)}
+          onHoverChange={(hovered) => handleHoverChange(index, hovered)}
+        />
       ))}
     </group>
   )
