@@ -3,7 +3,7 @@ import pytest
 from tuebingen_search.indexer import index
 from helpers import make_page_load
 from tuebingen_search.models import Document, Posting, SearchIndex
-from tuebingen_search.search import generate_snippet, proximity_bonus, search, search_index
+from tuebingen_search.search import generate_snippet, project_2d, proximity_bonus, search, search_index
 
 PAGES = {
     "apple.html": "<html><body><p>apple apple apple banana</p></body></html>",
@@ -189,6 +189,69 @@ def test_search_index_embedding_score_is_none_without_embeddings(tmp_path):
     results = search_index(index, "apple", top_n=10)
 
     assert results[0].embedding_score is None
+    assert results[0].embedding_x is None
+    assert results[0].embedding_y is None
+
+
+def test_search_index_reports_embedding_coords(tmp_path, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+
+    documents = [
+        Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",)),
+        Document(path=tmp_path / "b.html", url="https://b.test", length=1, terms=("apple",)),
+    ]
+    index = SearchIndex(
+        documents=documents,
+        inverted_index={
+            "apple": [
+                Posting(doc_index=0, score=1.0, positions=[0]),
+                Posting(doc_index=1, score=1.0, positions=[0]),
+            ]
+        },
+    )
+    doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+    monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))
+
+    results = search_index(index, "apple", top_n=10, doc_embeddings=doc_embeddings)
+
+    # two distinct, unrelated embeddings should not collapse onto the same point
+    coords = {result.url: (result.embedding_x, result.embedding_y) for result in results}
+    assert coords["https://a.test"] != coords["https://b.test"]
+    assert all(v is not None for xy in coords.values() for v in xy)
+
+
+def test_project_2d_places_identical_vectors_at_origin():
+    import numpy as np
+
+    vectors = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
+
+    coords = project_2d(vectors)
+
+    assert coords == [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+
+
+def test_project_2d_separates_orthogonal_vectors():
+    import numpy as np
+
+    vectors = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]])
+
+    coords = project_2d(vectors)
+
+    assert len(coords) == 4
+    assert len(set(coords)) == 4  # all distinct positions
+    for x, y in coords:
+        assert -1.0 <= x <= 1.0
+        assert -1.0 <= y <= 1.0
+
+
+def test_project_2d_handles_single_vector():
+    import numpy as np
+
+    assert project_2d(np.array([[1.0, 2.0]])) == [(0.0, 0.0)]
 
 
 def test_rerank_blends_lexical_and_semantic_scores():

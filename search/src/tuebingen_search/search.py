@@ -68,6 +68,14 @@ def search_index(
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
 
+    # 2D layout of the *result* embeddings so results that are semantically close
+    # end up close together on screen ("constellations" instead of a rank spiral)
+    embedding_coords: dict[int, tuple[float, float]] = {}
+    if doc_embeddings is not None and ranked_results:
+        doc_indices = [doc_index for doc_index, _ in ranked_results]
+        coords = project_2d(doc_embeddings[doc_indices])
+        embedding_coords = dict(zip(doc_indices, coords))
+
     search_results: list[SearchResult] = []
 
     for rank, (doc_index, score) in enumerate(ranked_results, start=1):
@@ -75,6 +83,7 @@ def search_index(
         path, url, terms = document.path, document.url, document.terms
 
         snippet = generate_snippet(terms, term_positions[doc_index], context_size)
+        xy = embedding_coords.get(doc_index)
 
         search_results.append(
             SearchResult(
@@ -84,6 +93,8 @@ def search_index(
                 url=url,
                 snippet=snippet,
                 embedding_score=embedding_scores.get(doc_index),
+                embedding_x=xy[0] if xy else None,
+                embedding_y=xy[1] if xy else None,
             )
         )
 
@@ -110,6 +121,20 @@ def rerank(
         blended = alpha * lexical_norm + (1 - alpha) * cosine
     order = np.argsort(-blended)
     return [(doc_indices[i], float(blended[i]), float(cosine[i])) for i in order]
+
+
+def project_2d(vectors: np.ndarray) -> list[tuple[float, float]]:
+    """PCA onto 2 components so semantically similar results land near each other."""
+    if len(vectors) < 2:
+        return [(0.0, 0.0)] * len(vectors)
+
+    centered = vectors - vectors.mean(axis=0)
+    _, _, top_components = np.linalg.svd(centered, full_matrices=False)
+    coords = centered @ top_components[:2].T
+
+    span = np.abs(coords).max() or 1.0
+    coords /= span
+    return [(float(x), float(y)) for x, y in coords]
 
 
 def reciprocal_rank_fusion(lexical: np.ndarray, cosine: np.ndarray, k: int = RRF_K) -> np.ndarray:
