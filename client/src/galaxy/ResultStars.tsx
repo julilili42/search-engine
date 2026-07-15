@@ -42,11 +42,26 @@ function displayHost(result: SearchResult) {
   }
 }
 
-// real stars follow the same rule: hotter = bluer-white, cooler = orange-red
+// stellar classification colors (M -> K -> G -> A -> O/B): red, orange, yellow-white,
+// white, blue-white. A plain hue sweep would cross green/cyan, which real stars never do.
+const STAR_COLOR_STOPS: [number, string][] = [
+  [0, "#ff5a36"],
+  [0.35, "#ffab5c"],
+  [0.6, "#fff2c2"],
+  [0.8, "#ffffff"],
+  [1, "#a9c4ff"],
+]
+
 function starColor(unit: number) {
-  const hue = 20 + unit * 200
-  const lightness = 55 + unit * 25
-  return new Color(`hsl(${hue}, 85%, ${lightness}%)`)
+  const t = MathUtils.clamp(unit, 0, 1)
+  for (let i = 0; i < STAR_COLOR_STOPS.length - 1; i++) {
+    const [t0, c0] = STAR_COLOR_STOPS[i]
+    const [t1, c1] = STAR_COLOR_STOPS[i + 1]
+    if (t <= t1) {
+      return new Color(c0).lerp(new Color(c1), (t - t0) / (t1 - t0))
+    }
+  }
+  return new Color(STAR_COLOR_STOPS[STAR_COLOR_STOPS.length - 1][1])
 }
 
 function layoutStars(results: SearchResult[]) {

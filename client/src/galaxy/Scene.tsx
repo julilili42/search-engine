@@ -82,7 +82,7 @@ function Scene({ phase, results }: SceneProps) {
       <PerspectiveCamera makeDefault position={[IDLE_CAMERA.x, IDLE_CAMERA.y, IDLE_CAMERA.z]} fov={IDLE_CAMERA.fov} near={0.05} far={200} />
       <CameraRig phase={phase} />
       <ambientLight intensity={0.5} />
-      <Stars radius={50} depth={30} count={3500} factor={1.1} saturation={0} fade speed={0.25} />
+      <Stars radius={50} depth={30} count={3800} factor={1.4} saturation={0} fade speed={0.25} />
       <GalaxyField visible={phase !== "results"} warpSpeed={phase === "warping" ? 6 : 1} />
       <WarpTunnel active={phase === "warping"} />
       {phase === "results" && <ResultStars results={results} />}
