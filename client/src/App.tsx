@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { Search, Loader2, ExternalLink, Map, List } from "lucide-react"
+import { Search, Loader2, ExternalLink, Map, List, ChevronLeft, ChevronRight } from "lucide-react"
 
 import MapView from "@/MapView"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,8 @@ type SearchResult = {
   url: string | null
   snippet: string
 }
+
+const PAGE_SIZE = 10
 
 function displayUrl(result: SearchResult) {
   return result.url ?? result.path
@@ -40,6 +42,10 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [page, setPage] = useState(1)
+
+  const pageCount = Math.ceil(results.length / PAGE_SIZE)
+  const pageResults = results.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   async function handleSearch(event: FormEvent) {
     event.preventDefault()
@@ -49,12 +55,13 @@ function App() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/search?q=${encodeURIComponent(q)}&top_n=10`)
+      const res = await fetch(`/search?q=${encodeURIComponent(q)}&top_n=100`)
       if (!res.ok) {
         throw new Error(`Suche fehlgeschlagen (HTTP ${res.status})`)
       }
       const data: SearchResult[] = await res.json()
       setResults(data)
+      setPage(1)
       setSearched(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler")
@@ -112,7 +119,7 @@ function App() {
       )}
 
       <div className="flex flex-col gap-3">
-        {results.map((result) => (
+        {pageResults.map((result) => (
           <Card key={`${result.rank}-${result.path}`} className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex min-w-0 items-center justify-between gap-2">
@@ -145,6 +152,30 @@ function App() {
           </Card>
         ))}
       </div>
+
+      {pageCount > 1 && (
+        <nav className="flex items-center justify-between gap-2" aria-label="Search result pages">
+          <Button
+            variant="outline"
+            onClick={() => setPage((current) => current - 1)}
+            disabled={page === 1}
+          >
+            <ChevronLeft />
+            Previous
+          </Button>
+          <span className="text-muted-foreground text-sm" aria-live="polite">
+            Page {page} of {pageCount}
+          </span>
+          <Button
+            variant="outline"
+            onClick={() => setPage((current) => current + 1)}
+            disabled={page === pageCount}
+          >
+            Next
+            <ChevronRight />
+          </Button>
+        </nav>
+      )}
         </>
       )}
     </div>

@@ -678,3 +678,46 @@ request_delay = 0.5
 url = "https://en.wikipedia.org/wiki/Wilhelm_Schickard"
 max_pages_per_seed = 10
 request_delay = 0.5
+
+# DISCO discoveries
+[[sites]]
+url = "https://www.medizin.uni-tuebingen.de/en-de/das-klinikum"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.tuebingen.mpg.de/172008/Leben-in-Tuebingen"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.daad.de/en/studying-in-germany/universities/all-degree-programmes/detail/eberhard-karls-university-tuebingen-english-w61019/"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.welcome.uni-tuebingen.de/move-to-germany"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.hoelderlinturm.de/english/"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.figurentheater-tuebingen.de/en/"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://tueboga.gardenexplorer.org/"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7

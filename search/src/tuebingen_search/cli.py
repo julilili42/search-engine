@@ -35,7 +35,7 @@ def build_search_parser() -> argparse.ArgumentParser:
 def build_embed_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="embed",
-        description="Build document embeddings for the Tuebingen index",
+        description="Build passage embeddings for the Tuebingen index",
     )
     parser.add_argument("-i", "--index", type=Path, default=DEFAULT_INDEX_PATH)
     parser.add_argument("-o", "--output", type=Path, default=DEFAULT_EMBEDDINGS_PATH)

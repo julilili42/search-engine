@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
-from .embeddings import embed_texts, get_model, load_embeddings
+from .embeddings import _get_model, embed_texts, load_embeddings
 from .search import SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
 
@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
         logger.warning("No embeddings at %s, serving lexical ranking only.", embeddings_path)
     else:
         logger.info("Loading embedding model...")
-        get_model()
+        _get_model()
     yield
 
 
@@ -50,9 +50,13 @@ def map_api(x: str = Query(min_length=1), y: str = Query(min_length=1)):
     if embeddings is None:
         raise HTTPException(status_code=503, detail="Embeddings not available, run `uv run embed`.")
 
+    document_embeddings = embeddings.mean_document_vectors()
+    if document_embeddings.shape[1] == 0:
+        raise HTTPException(status_code=503, detail='Embeddings contain no passages.')
+
     x_axis, y_axis = embed_texts([x, y])
-    xs = embeddings @ x_axis
-    ys = embeddings @ y_axis
+    xs = document_embeddings @ x_axis
+    ys = document_embeddings @ y_axis
     return [
         {"url": document.url, "title": document.title, "x": float(xs[i]), "y": float(ys[i])}
         for i, document in enumerate(app.state.index.documents)
