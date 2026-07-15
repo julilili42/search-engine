@@ -59,9 +59,12 @@ def search_index(
     for doc_index, doc_term_positions in term_positions.items():
         scores[doc_index] += proximity_bonus(doc_term_positions)
 
+    embedding_scores: dict[int, float] = {}
     if doc_embeddings is not None and scores:
         candidates = heapq.nlargest(max(top_n, RERANK_CANDIDATES), scores.items(), key=lambda item: item[1])
-        ranked_results = rerank(candidates, doc_embeddings, embed_texts([query])[0])[:top_n]
+        reranked = rerank(candidates, doc_embeddings, embed_texts([query])[0])[:top_n]
+        ranked_results = [(doc_index, score) for doc_index, score, _ in reranked]
+        embedding_scores = {doc_index: cosine for doc_index, _, cosine in reranked}
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
 
@@ -70,11 +73,18 @@ def search_index(
     for rank, (doc_index, score) in enumerate(ranked_results, start=1):
         document = index.documents[doc_index]
         path, url, terms = document.path, document.url, document.terms
-        
+
         snippet = generate_snippet(terms, term_positions[doc_index], context_size)
 
         search_results.append(
-            SearchResult(rank=rank, score=score, path=path, url=url, snippet=snippet)
+            SearchResult(
+                rank=rank,
+                score=score,
+                path=path,
+                url=url,
+                snippet=snippet,
+                embedding_score=embedding_scores.get(doc_index),
+            )
         )
 
     logger.info("Search computation took %s", elapsed(start))
@@ -86,7 +96,7 @@ def rerank(
     doc_embeddings: np.ndarray,
     query_embedding: np.ndarray,
     alpha: float = ALPHA,
-) -> list[tuple[int, float]]:
+) -> list[tuple[int, float, float]]:
     doc_indices = [doc_index for doc_index, _ in candidates]
     lexical = np.array([score for _, score in candidates])
 
@@ -99,7 +109,7 @@ def rerank(
     else:
         blended = alpha * lexical_norm + (1 - alpha) * cosine
     order = np.argsort(-blended)
-    return [(doc_indices[i], float(blended[i])) for i in order]
+    return [(doc_indices[i], float(blended[i]), float(cosine[i])) for i in order]
 
 
 def reciprocal_rank_fusion(lexical: np.ndarray, cosine: np.ndarray, k: int = RRF_K) -> np.ndarray:

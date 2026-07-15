@@ -48,3 +48,4 @@ class SearchResult:
     path: Path
     url: str | None
     snippet: str
+    embedding_score: float | None = None
