@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
-import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX } from "lucide-react"
+import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
 import { CATEGORY_X_LABEL, CATEGORY_Y_LABEL } from "@/galaxy/categories"
+import { PAGE_SIZE } from "@/galaxy/ResultStars"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { SearchResult } from "@/types"
@@ -10,6 +11,9 @@ import type { SearchResult } from "@/types"
 // keep in sync with WARP_DURATION in galaxy/Scene.tsx so results never arrive
 // before the camera has finished accelerating in
 const MIN_WARP_MS = 1750
+// fetch enough results up front to cover a few pages of pagination, so paging
+// right/left is just a camera pan over already-fetched stars, not a re-fetch
+const RESULTS_FETCH_COUNT = PAGE_SIZE * 3
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function displayHost(result: SearchResult) {
@@ -28,6 +32,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
   const [phase, setPhase] = useState<Phase>("idle")
+  const [page, setPage] = useState(0)
   const [flashNonce, setFlashNonce] = useState(0)
   const [categoryX, setCategoryX] = useState(CATEGORY_X_LABEL)
   const [categoryY, setCategoryY] = useState(CATEGORY_Y_LABEL)
@@ -41,7 +46,7 @@ function App() {
   }, [phase])
 
   function searchUrl(q: string, catX: string, catY: string) {
-    const params = new URLSearchParams({ q, top_n: "10" })
+    const params = new URLSearchParams({ q, top_n: String(RESULTS_FETCH_COUNT) })
     // only send overrides when they actually differ, so the backend can keep
     // using its cached default axis embeddings for the common case
     if (catX !== CATEGORY_X_LABEL || catY !== CATEGORY_Y_LABEL) {
@@ -59,6 +64,7 @@ function App() {
     setPhase("warping")
     setLoading(true)
     setError(null)
+    setPage(0)
 
     const start = Date.now()
     try {
@@ -110,6 +116,14 @@ function App() {
     setSearched(false)
     setResults([])
     setError(null)
+    setPage(0)
+  }
+
+  const totalPages = Math.ceil(results.length / PAGE_SIZE)
+  const pagedResults = results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  function goToPage(delta: number) {
+    setPage((p) => Math.min(Math.max(p + delta, 0), totalPages - 1))
   }
 
   const showList = phase === "results" && results.length > 0
@@ -117,39 +131,36 @@ function App() {
   return (
     <div className="flex h-svh w-svw overflow-hidden bg-[#05060d] text-white">
       <aside className="flex w-96 shrink-0 flex-col gap-4 overflow-hidden border-r border-white/10 bg-black/30 p-5 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
+        <h1 className="text-base leading-tight font-semibold tracking-tight">Tübingen Search</h1>
+
+        <form
+          onSubmit={handleSearch}
+          className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/5 pr-1.5 pl-1.5 focus-within:ring-2 focus-within:ring-white/30"
+        >
           <button
             type="button"
             onClick={goBack}
             disabled={phase === "idle"}
             title="Back to galaxy"
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 transition-colors enabled:hover:bg-white/20 disabled:cursor-default"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors enabled:hover:bg-white/10 enabled:hover:text-white disabled:cursor-default disabled:opacity-40"
           >
             <Home className="size-4" />
           </button>
-          <div>
-            <h1 className="text-base leading-tight font-semibold tracking-tight">Tübingen Search</h1>
-            <p className="text-xs text-white/50">BM25F + semantic re-ranking</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleSearch} className="relative shrink-0">
-          <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-white/40" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Tübingen..."
             autoFocus
             disabled={loading}
-            className="h-11 rounded-full border-white/15 bg-white/5 pr-24 pl-10 text-sm text-white placeholder:text-white/40 focus-visible:ring-white/30"
+            className="h-8 flex-1 border-0 bg-transparent px-1 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-0"
           />
           <Button
             type="submit"
             disabled={loading || !query.trim()}
             size="sm"
-            className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full"
+            className="size-8 shrink-0 rounded-full p-0"
           >
-            {loading ? <Loader2 className="animate-spin" /> : <Search />}
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
           </Button>
         </form>
 
@@ -160,23 +171,25 @@ function App() {
           </div>
         )}
 
-        {searched && !loading && !error && results.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-10 text-center text-white/50">
-            <SearchX className="size-7" />
-            <p className="text-sm">No results found.</p>
-          </div>
-        )}
-
-        {!searched && !loading && (
-          <p className="text-sm leading-relaxed text-white/40">
-            Enter a query to warp through the galaxy and land on the top 10 results, placed as stars by relevance and
-            topic.
-          </p>
-        )}
-
         <div className="flex-1 space-y-2 overflow-y-auto">
+          {searched && !loading && !error && results.length === 0 && (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/50">
+              <SearchX className="size-7" />
+              <p className="text-sm">No results found.</p>
+            </div>
+          )}
+
+          {!searched && !loading && (
+            <div className="flex h-full items-center">
+              <p className="text-sm leading-relaxed text-white/40">
+                Enter a query to warp through the galaxy and land on the top 10 results, placed as stars by relevance
+                and topic.
+              </p>
+            </div>
+          )}
+
           {showList &&
-            results.map((result) => (
+            pagedResults.map((result) => (
               <a
                 key={`${result.rank}-${result.path}`}
                 href={result.url ?? undefined}
@@ -200,12 +213,34 @@ function App() {
       </aside>
 
       <main className="relative flex-1 overflow-hidden">
-        <Scene phase={phase} results={results} />
+        <Scene phase={phase} results={results} page={page} totalPages={totalPages} onPageDelta={goToPage} />
         {flashNonce > 0 && (
           <div
             key={flashNonce}
             className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
           />
+        )}
+        {showList && totalPages > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => goToPage(-1)}
+              disabled={page === 0}
+              title="Previous 10 results"
+              className="absolute top-1/2 left-4 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage(1)}
+              disabled={page >= totalPages - 1}
+              title="Next 10 results"
+              className="absolute top-1/2 right-4 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </>
         )}
         {phase === "results" && (
           <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/40 uppercase">
