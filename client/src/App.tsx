@@ -127,43 +127,76 @@ function App() {
   }
 
   const showList = phase === "results" && results.length > 0
+  // the results panel only has something to show once a search has landed
+  // (a list, an error, or "no results") — before that, or once we've warped
+  // back out to the galaxy, it stays off-screen and only the search bar floats
+  const panelOpen = phase !== "idle" || searched
 
   return (
-    <div className="flex h-svh w-svw overflow-hidden bg-[#05060d] text-white">
-      <aside className="flex w-96 shrink-0 flex-col gap-4 overflow-hidden border-r border-white/10 bg-black/30 p-5 backdrop-blur-sm">
-        <h1 className="text-base leading-tight font-semibold tracking-tight">Tübingen Search</h1>
-
-        <form
-          onSubmit={handleSearch}
-          className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/5 pr-1.5 pl-1.5 focus-within:ring-2 focus-within:ring-white/30"
-        >
-          <button
-            type="button"
-            onClick={goBack}
-            disabled={phase === "idle"}
-            title="Back to galaxy"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors enabled:hover:bg-white/10 enabled:hover:text-white disabled:cursor-default disabled:opacity-40"
-          >
-            <Home className="size-4" />
-          </button>
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Tübingen..."
-            autoFocus
-            disabled={loading}
-            className="h-8 flex-1 border-0 bg-transparent px-1 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-0"
+    <div className="relative h-svh w-svw overflow-hidden bg-[#05060d] text-white">
+      <main className="absolute inset-0">
+        <Scene phase={phase} results={results} page={page} totalPages={totalPages} onPageDelta={goToPage} />
+        {flashNonce > 0 && (
+          <div
+            key={flashNonce}
+            className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
           />
-          <Button
-            type="submit"
-            disabled={loading || !query.trim()}
-            size="sm"
-            className="size-8 shrink-0 rounded-full p-0"
-          >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-          </Button>
-        </form>
+        )}
+        {showList && totalPages > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => goToPage(-1)}
+              disabled={page === 0}
+              title="Previous 10 results"
+              className="absolute top-1/2 left-[25rem] flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage(1)}
+              disabled={page >= totalPages - 1}
+              title="Next 10 results"
+              className="absolute top-1/2 right-4 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </>
+        )}
+        {phase === "results" && (
+          <div className="pointer-events-none absolute top-4 right-4 bottom-4 left-[25rem] text-[11px] tracking-wide text-white/40 uppercase">
+            <div className="pointer-events-auto absolute right-0 bottom-0 flex items-center gap-1.5">
+              <input
+                value={categoryX}
+                onChange={(e) => setCategoryX(e.target.value)}
+                onBlur={() => applyCategories(categoryX, categoryY)}
+                onKeyDown={handleAxisKeyDown}
+                title="Click to change the X axis category"
+                className="w-56 bg-transparent text-right uppercase outline-none placeholder:text-white/30 focus:text-white/80"
+              />
+              <span>→</span>
+            </div>
+            <div className="pointer-events-auto absolute top-12 left-0 flex flex-col items-center gap-1.5">
+              <span>↑</span>
+              <input
+                value={categoryY}
+                onChange={(e) => setCategoryY(e.target.value)}
+                onBlur={() => applyCategories(categoryX, categoryY)}
+                onKeyDown={handleAxisKeyDown}
+                title="Click to change the Y axis category"
+                className="h-56 bg-transparent uppercase outline-none placeholder:text-white/30 focus:text-white/80 [writing-mode:vertical-rl]"
+              />
+            </div>
+          </div>
+        )}
+      </main>
 
+      <aside
+        className={`absolute top-0 left-0 z-10 flex h-full w-96 flex-col gap-2 overflow-hidden border-r border-white/10 bg-black/30 p-5 pt-24 backdrop-blur-sm transition-transform duration-500 ease-out ${
+          panelOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         {error && (
           <div className="flex shrink-0 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
             <CircleAlert className="size-4 shrink-0" />
@@ -176,15 +209,6 @@ function App() {
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/50">
               <SearchX className="size-7" />
               <p className="text-sm">No results found.</p>
-            </div>
-          )}
-
-          {!searched && !loading && (
-            <div className="flex h-full items-center">
-              <p className="text-sm leading-relaxed text-white/40">
-                Enter a query to warp through the galaxy and land on the top 10 results, placed as stars by relevance
-                and topic.
-              </p>
             </div>
           )}
 
@@ -212,63 +236,40 @@ function App() {
         </div>
       </aside>
 
-      <main className="relative flex-1 overflow-hidden">
-        <Scene phase={phase} results={results} page={page} totalPages={totalPages} onPageDelta={goToPage} />
-        {flashNonce > 0 && (
-          <div
-            key={flashNonce}
-            className="pointer-events-none absolute inset-0 bg-white opacity-0 [animation:warp-flash_0.6s_ease-out_forwards]"
+      <div className="absolute top-5 left-5 z-20 w-96">
+        <h1 className="mb-2 text-base leading-tight font-semibold tracking-tight drop-shadow-md">Tübingen Search</h1>
+
+        <form
+          onSubmit={handleSearch}
+          className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-black/50 pr-1.5 pl-1.5 backdrop-blur-sm focus-within:ring-2 focus-within:ring-white/30"
+        >
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={phase === "idle"}
+            title="Back to galaxy"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors enabled:hover:bg-white/10 enabled:hover:text-white disabled:cursor-default disabled:opacity-40"
+          >
+            <Home className="size-4" />
+          </button>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search Tübingen..."
+            autoFocus
+            disabled={loading}
+            className="h-8 flex-1 border-0 bg-transparent px-1 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-0"
           />
-        )}
-        {showList && totalPages > 1 && (
-          <>
-            <button
-              type="button"
-              onClick={() => goToPage(-1)}
-              disabled={page === 0}
-              title="Previous 10 results"
-              className="absolute top-1/2 left-4 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
-            >
-              <ChevronLeft className="size-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => goToPage(1)}
-              disabled={page >= totalPages - 1}
-              title="Next 10 results"
-              className="absolute top-1/2 right-4 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
-            >
-              <ChevronRight className="size-5" />
-            </button>
-          </>
-        )}
-        {phase === "results" && (
-          <div className="pointer-events-none absolute inset-4 text-[11px] tracking-wide text-white/40 uppercase">
-            <div className="pointer-events-auto absolute right-0 bottom-0 flex items-center gap-1.5">
-              <input
-                value={categoryX}
-                onChange={(e) => setCategoryX(e.target.value)}
-                onBlur={() => applyCategories(categoryX, categoryY)}
-                onKeyDown={handleAxisKeyDown}
-                title="Click to change the X axis category"
-                className="w-56 bg-transparent text-right uppercase outline-none placeholder:text-white/30 focus:text-white/80"
-              />
-              <span>→</span>
-            </div>
-            <div className="pointer-events-auto absolute top-12 left-0 flex flex-col items-center gap-1.5">
-              <span>↑</span>
-              <input
-                value={categoryY}
-                onChange={(e) => setCategoryY(e.target.value)}
-                onBlur={() => applyCategories(categoryX, categoryY)}
-                onKeyDown={handleAxisKeyDown}
-                title="Click to change the Y axis category"
-                className="h-56 bg-transparent uppercase outline-none placeholder:text-white/30 focus:text-white/80 [writing-mode:vertical-rl]"
-              />
-            </div>
-          </div>
-        )}
-      </main>
+          <Button
+            type="submit"
+            disabled={loading || !query.trim()}
+            size="sm"
+            className="size-8 shrink-0 rounded-full p-0"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+          </Button>
+        </form>
+      </div>
     </div>
   )
 }
