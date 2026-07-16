@@ -11,7 +11,9 @@ function BloomEffect() {
   const composer = useMemo(() => {
     const instance = new EffectComposer(gl)
     instance.addPass(new RenderPass(scene, camera))
-    instance.addPass(new UnrealBloomPass(new Vector2(size.width, size.height), 3.6, 1.0, 0.05))
+    // strong + near-zero threshold so even the dim dust haze in GalaxyField
+    // catches bloom and visibly scatters, not just the bright core
+    instance.addPass(new UnrealBloomPass(new Vector2(size.width, size.height), 5.2, 1.0, 0.015))
     return instance
   }, [gl, scene, camera])
 
