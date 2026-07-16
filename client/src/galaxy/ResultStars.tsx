@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useFrame } from "@react-three/fiber"
+import { useFrame, type ThreeEvent } from "@react-three/fiber"
 import { Html } from "@react-three/drei"
 import { Color, Group, Mesh, MathUtils } from "three"
 
@@ -16,16 +16,34 @@ const AXIS_SPREAD = 7
 // golden angle: spreads points around the center without overlapping spokes,
 // used as a fallback when embedding coordinates aren't available
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
-// stars this close together are hard to pick apart with the cursor — hovering
-// any one of them nudges the whole cluster apart
-const CLUSTER_DISTANCE = 1.0
+// distance below which two stars are considered visually overlapping and
+// therefore clustered together (kept separate from HOVER_RADIUS below — see
+// that constant for why they can't share a value)
+const OVERLAP_DISTANCE = 1.0
 const CLUSTER_SPREAD = 0.45
+// each star's invisible hit-sphere radius, deliberately >> CLUSTER_SPREAD.
+// When a cluster spreads, every member moves CLUSTER_SPREAD away from the
+// shared centroid, so two spread stars end up ~2 * CLUSTER_SPREAD apart. For
+// the cursor to stay "inside the radius" anywhere in the gap between them —
+// including the dead centroid point, where a naive radius barely bigger than
+// CLUSTER_SPREAD leaves only a hair of overlap — the two hit-spheres need to
+// overlap by a comfortable margin, not just touch. HOVER_RADIUS must NOT be
+// derived from OVERLAP_DISTANCE (that would just re-couple the two and force
+// a choice between "clusters trigger too eagerly" and "hover keeps dropping
+// in the gap"); it's sized purely around CLUSTER_SPREAD instead.
+const HOVER_RADIUS = 0.9
 // lower = slower, smoother easing toward the spread/collapsed position (see MathUtils.damp)
 const SPREAD_DAMP = 4
 // grace period before a spread cluster collapses back together, so moving the
-// cursor from one just-separated star to its neighbor doesn't snap them shut
-// again mid-transit
+// cursor from one just-separated star to its neighbor (or through the gap
+// between them) doesn't snap them shut again mid-transit
 const UNHOVER_GRACE_MS = 450
+
+// results are paged 10-at-a-time; each page gets its own constellation
+// cluster offset along x, so paginating is a camera pan to the next cluster
+// instead of a re-layout
+export const PAGE_SIZE = 10
+export const PAGE_SPACING = 24
 
 function relevanceOf(result: SearchResult) {
   return result.embedding_score ?? result.score
@@ -88,18 +106,20 @@ function layoutStars(results: SearchResult[]) {
 
   const placed = results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))
+    const pageX = Math.floor(index / PAGE_SIZE) * PAGE_SPACING
+    const pageLocalIndex = index % PAGE_SIZE
 
     // the constellation shape is the two named category axes (embedding_x/y);
     // relevance only drives size/brightness, not placement, so the axes stay legible
     let x: number
     let y: number
     if (hasEmbeddingCoords) {
-      x = result.embedding_x! * AXIS_SPREAD
+      x = pageX + result.embedding_x! * AXIS_SPREAD
       y = result.embedding_y! * AXIS_SPREAD
     } else {
-      const angle = index * GOLDEN_ANGLE
+      const angle = pageLocalIndex * GOLDEN_ANGLE
       const orbit = MIN_ORBIT + (1 - unit) * (MAX_ORBIT - MIN_ORBIT)
-      x = Math.cos(angle) * orbit
+      x = pageX + Math.cos(angle) * orbit
       y = Math.sin(angle) * orbit
     }
     // slight deterministic depth jitter so the constellation isn't a perfectly flat card
@@ -109,14 +129,71 @@ function layoutStars(results: SearchResult[]) {
       result,
       unit,
       position: [x, y, z] as [number, number, number],
-      delay: 0.1 + index * 0.08,
+      delay: 0.1 + pageLocalIndex * 0.08,
     }
   })
 
-  // stars close enough to be hard to pick apart, keyed by index into `placed`
-  const neighbors = placed.map((p, i) =>
-    placed.flatMap((q, j) => (i !== j && screenDistance(p.position, q.position) < CLUSTER_DISTANCE ? [j] : [])),
-  )
+  // union-find over `placed` indices, seeded from raw layout overlap (pages
+  // sit PAGE_SPACING apart, far past OVERLAP_DISTANCE, so clustering never
+  // crosses pages)
+  const parent = placed.map((_, i) => i)
+  function find(i: number): number {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]]
+      i = parent[i]
+    }
+    return i
+  }
+  function union(a: number, b: number) {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent[ra] = rb
+  }
+
+  for (let i = 0; i < placed.length; i++) {
+    for (let j = i + 1; j < placed.length; j++) {
+      if (screenDistance(placed[i].position, placed[j].position) < OVERLAP_DISTANCE) union(i, j)
+    }
+  }
+
+  // a cluster fanning out (spreadOffsetFor) can carry one of its members into
+  // range of a star that wasn't part of the original overlap — pull that star
+  // into the cluster too (so it also fans away) and repeat, since absorbing it
+  // can in turn bring in another, until a pass produces no new merges
+  for (let pass = 0; pass < 5; pass++) {
+    const groups = new Map<number, number[]>()
+    for (let i = 0; i < placed.length; i++) {
+      const root = find(i)
+      const members = groups.get(root) ?? []
+      members.push(i)
+      groups.set(root, members)
+    }
+    const spread = placed.map((p, i) => {
+      const offset = spreadOffsetFor(i, groups.get(find(i))!, placed)
+      return [p.position[0] + offset[0], p.position[1] + offset[1], p.position[2] + offset[2]] as [
+        number,
+        number,
+        number,
+      ]
+    })
+
+    let merged = false
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        if (find(i) === find(j)) continue
+        if (screenDistance(spread[i], spread[j]) < OVERLAP_DISTANCE) {
+          union(i, j)
+          merged = true
+        }
+      }
+    }
+    if (!merged) break
+  }
+
+  const neighbors = placed.map((_, i) => {
+    const root = find(i)
+    return placed.flatMap((_, j) => (j !== i && find(j) === root ? [j] : []))
+  })
 
   return placed.map((p, i) => ({ ...p, neighbors: neighbors[i] }))
 }
@@ -201,19 +278,42 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, revealed
     if (result.url) window.open(result.url, "_blank", "noopener,noreferrer")
   }
 
-  function handlePointerOver() {
+  // stopPropagation is load-bearing: HOVER_RADIUS is now big enough that
+  // neighboring stars' hit-spheres genuinely overlap in 3D, so a single ray
+  // can intersect more than one of them at once. Without stopping it here,
+  // the event keeps propagating to every farther hit-sphere along that same
+  // ray, firing pointerOver on all of them — which showed up as two
+  // simultaneous tooltips on overlapping stars.
+  function handlePointerOver(event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation()
     setHovered(true)
     onHoverChange(true)
   }
 
-  function handlePointerOut() {
+  function handlePointerOut(event: ThreeEvent<PointerEvent>) {
+    event.stopPropagation()
     setHovered(false)
     onHoverChange(false)
   }
 
   return (
     <group ref={groupRef} position={position}>
-      <mesh ref={meshRef} onClick={openResult} onPointerOver={handlePointerOver} onPointerOut={handlePointerOut}>
+      {/* invisible hit-sphere, bigger than the visible dot — this is the actual
+          "radius" used for both hover and cluster-overlap detection, so the
+          cursor stays "in" a spread cluster even in the gaps between the now
+          separated visible dots. visible={revealed} keeps it un-raycastable
+          (three.js skips invisible objects) before the reveal, matching the
+          scale-0 visible mesh. */}
+      <mesh
+        visible={revealed}
+        onClick={openResult}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
+        <sphereGeometry args={[HOVER_RADIUS, 12, 12]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh ref={meshRef}>
         <sphereGeometry args={[size, 16, 16]} />
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
@@ -226,6 +326,24 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, revealed
       )}
     </group>
   )
+}
+
+// full connected component reachable from `start` via overlapping-radius edges,
+// not just its direct neighbors — so a chain of 3+ overlapping stars all
+// spread apart together, from whichever one of them is hovered
+function clusterOf(start: number, placed: { neighbors: number[] }[]) {
+  const seen = new Set([start])
+  const stack = [start]
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    for (const neighbor of placed[current].neighbors) {
+      if (!seen.has(neighbor)) {
+        seen.add(neighbor)
+        stack.push(neighbor)
+      }
+    }
+  }
+  return [...seen]
 }
 
 function ResultStars({ results, revealed }: ResultStarsProps) {
@@ -253,7 +371,7 @@ function ResultStars({ results, revealed }: ResultStarsProps) {
     }
   }
 
-  const activeCluster = hoveredIndex === null ? [] : [hoveredIndex, ...placed[hoveredIndex].neighbors]
+  const activeCluster = hoveredIndex === null ? [] : clusterOf(hoveredIndex, placed)
 
   return (
     <group>
