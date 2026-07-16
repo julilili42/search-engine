@@ -2,22 +2,24 @@ import { useMemo, useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import { LineSegments } from "three"
 
-const STREAK_COUNT = 450
+const STREAK_COUNT = 520
 const SPREAD = 14
 const DEPTH = 40
 const RESET_Z = 4
 const RAMP_DURATION = 1.6 // seconds to reach full speed — sells the "accelerating" feel
 const MIN_SPEED = 2
-const MAX_SPEED = 36
+const MAX_SPEED = 42
 const MIN_STREAK_LENGTH = 0.3
-const MAX_STREAK_LENGTH = 2.6
+const MAX_STREAK_LENGTH = 3
 
 function randomOffset() {
   return (Math.random() - 0.5) * SPREAD
 }
 
-function easeInCubic(t: number) {
-  return t * t * t
+// matches the "expo.in" ease driving the camera in Scene.tsx, so the tunnel's
+// own ramp-up reads as the same launch instead of two different curves
+function easeInExpo(t: number) {
+  return t === 0 ? 0 : Math.pow(2, 10 * (t - 1))
 }
 
 type WarpTunnelProps = {
@@ -47,7 +49,7 @@ function WarpTunnel({ active }: WarpTunnelProps) {
     if (rampStart.current === null) rampStart.current = clock.getElapsedTime()
 
     const progress = Math.min((clock.getElapsedTime() - rampStart.current) / RAMP_DURATION, 1)
-    const eased = easeInCubic(progress)
+    const eased = easeInExpo(progress)
     const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * eased
     const streakLength = MIN_STREAK_LENGTH + (MAX_STREAK_LENGTH - MIN_STREAK_LENGTH) * eased
 
