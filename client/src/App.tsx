@@ -127,10 +127,10 @@ function App() {
   }
 
   const showList = phase === "results" && results.length > 0
-  // the results panel only has something to show once a search has landed
-  // (a list, an error, or "no results") — before that, or once we've warped
-  // back out to the galaxy, it stays off-screen and only the search bar floats
-  const panelOpen = phase !== "idle" || searched
+  // the results panel slides in once the stars are actually on screen (or a
+  // search has landed on an error / zero results) — not while still warping,
+  // so it doesn't beat the reveal it's meant to accompany
+  const panelOpen = phase === "results" || (searched && !loading)
 
   return (
     <div className="relative h-svh w-svw overflow-hidden bg-[#05060d] text-white">
@@ -149,7 +149,7 @@ function App() {
               onClick={() => goToPage(-1)}
               disabled={page === 0}
               title="Previous 10 results"
-              className="absolute top-1/2 left-[25rem] flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
+              className="absolute top-1/2 left-[31rem] flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors enabled:hover:bg-white/20 disabled:opacity-0"
             >
               <ChevronLeft className="size-5" />
             </button>
@@ -165,7 +165,7 @@ function App() {
           </>
         )}
         {phase === "results" && (
-          <div className="pointer-events-none absolute top-4 right-4 bottom-4 left-[25rem] text-[11px] tracking-wide text-white/40 uppercase">
+          <div className="pointer-events-none absolute top-4 right-4 bottom-4 left-[31rem] text-[11px] tracking-wide text-white/40 uppercase">
             <div className="pointer-events-auto absolute right-0 bottom-0 flex items-center gap-1.5">
               <input
                 value={categoryX}
@@ -193,7 +193,7 @@ function App() {
       </main>
 
       <aside
-        className={`absolute top-0 left-0 z-10 flex h-full w-96 flex-col gap-2 overflow-hidden border-r border-white/10 bg-black/30 p-5 pt-24 backdrop-blur-sm transition-transform duration-500 ease-out ${
+        className={`absolute top-0 left-0 z-10 flex h-full w-[30rem] flex-col gap-2 overflow-hidden border-r border-white/10 bg-black/15 p-5 pt-24 transition-transform duration-500 ease-out ${
           panelOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -236,7 +236,7 @@ function App() {
         </div>
       </aside>
 
-      <div className="absolute top-5 left-5 z-20 w-96">
+      <div className="absolute top-0 left-0 z-20 w-[30rem] p-5">
         <h1 className="mb-2 text-base leading-tight font-semibold tracking-tight drop-shadow-md">Tübingen Search</h1>
 
         <form
