@@ -24,6 +24,18 @@ url = "https://tuenews.de/en/new-bus-schedule-in-tuebingen/"
 max_pages_per_seed = 1000
 request_delay = 0.5
 
+[[sites]]
+url = "https://www.britannica.com/place/Tubingen-Germany"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.britannica.com/topic/University-of-Tubingen"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
+
 # Tourism & attractions
 [[sites]]
 url = "https://www.tripadvisor.com/Tourism-g198539-Tubingen_Baden_Wurttemberg-Vacations.html"
@@ -174,6 +186,12 @@ request_delay = 0.5
 url = "https://maps.apple.com/place?place-id=I6ABA060504803014"
 max_pages_per_seed = 240
 request_delay = 0.5
+
+[[sites]]
+url = "https://www.jugendherberge.de/en/youth-hostels/tuebingen"
+max_pages_per_seed = 30
+max_discovered_per_seed = 50
+request_delay = 0.7
 
 [[sites]]
 url = "https://mindtrip.ai/attraction/tubingen-baden-wurttemberg/market-square-marktplatz/at-UCkSyNao"
@@ -414,11 +432,6 @@ request_delay = 0.5
 url = "https://www.tuebus.de/"
 max_pages_per_seed = 80
 request_delay = 0.5
-
-[[sites]]
-url = "https://www.thetrainline.com/en/stations/tubingen-hbf"
-max_pages_per_seed = 400
-request_delay = 0.7
 
 [[sites]]
 url = "https://www.rome2rio.com/s/T%C3%BCbingen-Hauptbahnhof/University-of-T%C3%BCbingen"
