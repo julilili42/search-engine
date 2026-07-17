@@ -23,12 +23,13 @@ uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
 
 - Seeds live in `crawl/seeds.toml`.
 - Each `[[sites]]` entry supports `url`, `request_delay`, optional
-  `max_pages_per_seed`, and `max_discovered_per_seed` for a bounded pilot.
-- Seeds are crawled in parallel, one worker per seed, so no single seed
-  frontier monopolizes the crawl.
-- HTML is saved under `data/html/<host>/`; per-seed state is saved as
-  `data/state/crawl_state-*.json`, with shared deduplication state in
-  `data/state/shared_state.json`; page and link metadata is recorded in
+  `max_pages_per_seed`, `max_discovered_per_seed`, and `sitemap = true` for
+  opt-in same-origin sitemap discovery (`robots.txt`, then `/sitemap.xml`).
+- Workers claim URLs from one global frontier. It picks the highest-scoring
+  eligible host while allowing at most one in-flight request per host.
+- HTML is saved under `data/html/<host>/`; global state is saved as
+  `data/state/global_frontier.json`, with deduplication state in
+  `data/state/global_seen.json`; page and link metadata is recorded in
   `data/pages.sqlite`.
 - Saved pages are capped per host, and hosts with repeated rejects and no saved
   pages are stopped early.
@@ -36,14 +37,14 @@ uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
 ## Crawler Flow
 
 1. `main.py` loads seeds, models, stores, and crawl config.
-2. `scheduler.py` creates one `CrawlRun` per seed and runs them in parallel.
-3. `crawler.py` pops URLs from a run's frontier, checks host budgets and
-   `robots.txt`, then fetches pages.
+2. `scheduler.py` creates one global frontier and workers claim leases from it.
+3. `crawler.py` processes each lease, checks host budgets and `robots.txt`,
+   then fetches pages.
 4. `page_evaluation.py` parses, classifies, saves, or rejects pages.
 5. `link_evaluation.py` classifies links from saved pages and selects which
    links enter the frontier.
-6. `frontier.py` owns frontier priority, global saved-page caps, and host reject
-   budgets.
+6. `frontier.py` owns global priority, host politeness, saved-page caps, and
+   host reject budgets.
 
 ## Stored Metadata
 
