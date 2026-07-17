@@ -10,7 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from .models import CrawlSite, CrawlState, FrontierEntry, Statistics
 from .urls import normalize_host, url_slug
-from .frontier import count_frontier_hosts, push_frontier
+from .frontier import count_frontier_hosts
 import hashlib
 import tomllib
 import httpx
@@ -70,19 +70,38 @@ class RobotsCache:
     def __init__(self, client: httpx.Client) -> None:
         self._client = client
         self._parsers: dict[str, RobotFileParser] = {}
+        self._reported_missing_sitemaps: set[str] = set()
         self._lock = threading.Lock()
 
     def can_fetch(self, user_agent: str, url: str) -> bool:
+        parser = self._parser_for(url)
+        return parser is not None and parser.can_fetch(user_agent, url)
+
+    def site_maps(self, url: str) -> list[str]:
+        parser = self._parser_for(url)
+        if parser is None:
+            return []
+        site_maps = parser.site_maps() or []
+        if site_maps:
+            return site_maps
+        origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        with self._lock:
+            if origin not in self._reported_missing_sitemaps:
+                logger.info("No sitemap declared in robots.txt for %s", origin)
+                self._reported_missing_sitemaps.add(origin)
+        return []
+
+    def _parser_for(self, url: str) -> RobotFileParser | None:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            return False
+            return None
         origin = f"{parsed.scheme}://{parsed.netloc}"
         with self._lock:
             parser = self._parsers.get(origin)
             if parser is None:
                 parser = load_robots(self._client, url)
                 self._parsers[origin] = parser
-        return parser.can_fetch(user_agent, url)
+        return parser
 
 
 # load and validate seed toml list
@@ -107,15 +126,12 @@ def load_seed_toml(path: Path) -> list[CrawlSite]:
         return []
 
 
-# creates unique state path outside host HTML directories
-def generate_state_path(save_dir: Path, host: str, canonical_start_url: str) -> Path:
-    normalized_host = normalize_host(host)
-    digest = hashlib.sha256(canonical_start_url.encode("utf-8")).hexdigest()[:12]
-    return save_dir / "state" / f"crawl_state-{normalized_host}-{digest}.json"
+def generate_global_state_path(state_dir: Path) -> Path:
+    return state_dir / "state" / "global_frontier.json"
 
 
-def generate_shared_state_path(state_dir: Path) -> Path:
-    return state_dir / "state" / "shared_state.json"
+def generate_global_shared_state_path(state_dir: Path) -> Path:
+    return state_dir / "state" / "global_seen.json"
 
 
 def _write_json(path: Path, data: dict[str, object]) -> None:
@@ -125,27 +141,18 @@ def _write_json(path: Path, data: dict[str, object]) -> None:
     os.replace(tmp_path, path)
 
 
-# saving of crawling progress dependend on save_state_every, wrapper around `save_state`
-def maybe_save_state(
-    save_state_every: int,
-    state_path: Path,
-    state: CrawlState
-) -> None:
-    if save_state_every <= 0:
-        return
-
-    if state.statistics.discovered % save_state_every == 0:
-        save_state(state_path, state)
-
-
 # saving of intermediate state
 def save_state(path: Path, state: CrawlState) -> None:
     data = {
         "frontier": [asdict(entry) for entry in state.frontier],
-        "recent_pop_hosts": list(state.recent_pop_hosts),
         "queued_urls_by_host": dict(state.queued_urls_by_host),
         "counter": state.counter,
         "statistics": asdict(state.statistics),
+        "seen_sitemaps": sorted(state.seen_sitemaps),
+        "seed_statistics": {
+            str(seed_index): asdict(statistics)
+            for seed_index, statistics in state.seed_statistics.items()
+        },
     }
     _write_json(path, data)
 
@@ -190,10 +197,17 @@ def load_state(path: Path) -> tuple[CrawlState, bool]:
             frontier=frontier,
             seen_urls=set(data.get("seen_urls", [])),
             seen_texts=seen_texts,
-            recent_pop_hosts=list(data.get("recent_pop_hosts", [])),
+            seen_sitemaps={
+                sitemap for sitemap in data.get("seen_sitemaps", []) if isinstance(sitemap, str)
+            },
             queued_urls_by_host=count_frontier_hosts(frontier),
             counter=data.get("counter", 0),
             statistics=Statistics(**data.get("statistics", {})),
+            seed_statistics={
+                int(seed_index): Statistics(**statistics)
+                for seed_index, statistics in data.get("seed_statistics", {}).items()
+                if isinstance(statistics, dict)
+            },
         )
         logger.info("Intermediate state was loaded successfully.")
         return state, True
@@ -209,44 +223,17 @@ def _frontier_entry(entry: object) -> FrontierEntry:
             sequence=int(entry["sequence"]),
             url=str(entry["url"]),
             depth=int(entry["depth"]),
+            seed_index=int(entry.get("seed_index", 0)),
         )
 
-    if isinstance(entry, (list, tuple)) and len(entry) == 4:
-        heap_priority, sequence, url, depth = entry
+    if isinstance(entry, (list, tuple)) and len(entry) in {4, 5}:
+        heap_priority, sequence, url, depth, *rest = entry
         return FrontierEntry(
             heap_priority=float(heap_priority),
             sequence=int(sequence),
             url=str(url),
             depth=int(depth),
+            seed_index=int(rest[0]) if rest else 0,
         )
 
     raise ValueError(f"Invalid frontier entry: {entry!r}")
-
-
-# load intermediate state or start a new one
-def load_or_create_state(
-    state_path: Path,
-    canonical_start: str,
-    seen_urls: set[str],
-    seen_texts: set[int],
-) -> CrawlState:
-    state, loaded = load_state(state_path)
-
-    seen_urls.update(state.seen_urls)
-    seen_texts.update(state.seen_texts)
-    state.seen_urls = seen_urls
-    state.seen_texts = seen_texts
-
-    if loaded:
-        if state.frontier:
-            logger.info("Resuming crawl with %d queued links", len(state.frontier))
-        else:
-            logger.info("Crawl state is already complete")
-        return state
-
-    state.seen_urls.add(canonical_start)
-
-    # seed links have highest possible priority
-    seed_score = 1_000_000.0
-    push_frontier(state, seed_score, canonical_start, depth=0)
-    return state

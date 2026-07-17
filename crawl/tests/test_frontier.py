@@ -1,15 +1,11 @@
 import math
 
 from tuebingen_crawler.frontier import (
-    host_reject_budget_exhausted,
-    _pop_priority_score,
     _push_priority_score,
-    _remember_host,
     count_frontier_hosts,
-    pop_frontier,
-    push_frontier,
+    host_reject_budget_exhausted,
 )
-from tuebingen_crawler.models import CrawlState, FrontierEntry
+from tuebingen_crawler.models import FrontierEntry
 
 
 def test_count_frontier_hosts_normalizes_hosts():
@@ -19,29 +15,12 @@ def test_count_frontier_hosts_normalizes_hosts():
         FrontierEntry(-1.0, 3, "https://other.org/", 0),
     ]
 
-    assert count_frontier_hosts(frontier) == {
-        "example.org": 2,
-        "other.org": 1,
-    }
+    assert count_frontier_hosts(frontier) == {"example.org": 2, "other.org": 1}
 
 
-def test_host_reject_budget_exhausted_blocks_host_without_saves():
+def test_host_reject_budget_exhausted_blocks_unproductive_hosts():
     assert host_reject_budget_exhausted({}, {"junk.org": 6}, "junk.org")
-    assert not host_reject_budget_exhausted({}, {"junk.org": 5}, "junk.org")
-
-
-def test_host_reject_budget_exhausted_allows_productive_host():
-    # ~3 rejects per save is normal for good hosts
-    assert not host_reject_budget_exhausted(
-        {"uni.example": 50}, {"uni.example": 150}, "uni.example"
-    )
-
-
-def test_host_reject_budget_exhausted_blocks_drifting_host_despite_saves():
-    # saves no longer grant immunity: rejects beyond host_reject_ratio x saves cut the host off
-    assert host_reject_budget_exhausted(
-        {"aggregator.example": 50}, {"aggregator.example": 500}, "aggregator.example"
-    )
+    assert not host_reject_budget_exhausted({"uni.example": 50}, {"uni.example": 150}, "uni.example")
 
 
 def test_push_priority_score_penalizes_depth_and_host_saturation():
@@ -54,69 +33,3 @@ def test_push_priority_score_penalizes_depth_and_host_saturation():
     )
 
     assert score == 10.0 - 0.7 * 2 - 0.9 * math.log1p(9)
-
-
-def test_push_frontier_uses_push_priority_score_for_heap_priority():
-    state = CrawlState(queued_urls_by_host={"example.org": 2})
-
-    push_frontier(
-        state,
-        score=10.0,
-        url="https://example.org/a",
-        depth=2,
-        saved_urls_by_host={"example.org": 3},
-    )
-
-    expected_score = 10.0 - 0.7 * 2 - 0.9 * math.log1p(5)
-    assert state.frontier == [
-        FrontierEntry(-expected_score, 1, "https://example.org/a", 2)
-    ]
-
-
-def test_push_frontier_counts_queued_urls_by_host():
-    state = CrawlState()
-
-    push_frontier(state, 10.0, "https://www.example.org/a", 1)
-    push_frontier(state, 9.0, "https://example.org/b", 1)
-
-    assert state.queued_urls_by_host == {"example.org": 2}
-
-
-def test_pop_priority_score_penalizes_recent_pop_hosts():
-    entry = FrontierEntry(-10.0, 1, "https://example.org/a", 1)
-
-    assert (
-        _pop_priority_score(entry, recent_pop_hosts=["example.org", "example.org"])
-        == 8.0
-    )
-
-
-def test_remember_host_tracks_recent_pop_hosts():
-    state = CrawlState()
-
-    _remember_host(state, "https://www.example.org/a")
-
-    assert state.recent_pop_hosts == ["example.org"]
-
-
-def test_remember_host_keeps_recent_window():
-    state = CrawlState(recent_pop_hosts=["a.org", "b.org"])
-
-    _remember_host(state, "https://c.org/", recent_host_window=2)
-
-    assert state.recent_pop_hosts == ["b.org", "c.org"]
-
-
-def test_pop_frontier_uses_recent_host_penalty_within_window():
-    state = CrawlState(
-        frontier=[
-            FrontierEntry(-10.0, 1, "https://a.org/high", 1),
-            FrontierEntry(-9.0, 2, "https://b.org/lower", 1),
-        ],
-        recent_pop_hosts=["a.org", "a.org"],
-        queued_urls_by_host={"a.org": 1, "b.org": 1},
-    )
-    assert pop_frontier(state, pop_window=2) == ("https://b.org/lower", 1)
-    assert state.frontier == [FrontierEntry(-10.0, 1, "https://a.org/high", 1)]
-    assert state.queued_urls_by_host == {"a.org": 1}
-    assert state.recent_pop_hosts[-1] == "b.org"

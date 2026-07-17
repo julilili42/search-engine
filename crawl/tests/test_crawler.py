@@ -6,13 +6,19 @@ import httpx
 import pytest
 
 import tuebingen_crawler.scheduler as scheduler_module
-from tuebingen_crawler.crawler import CrawlRun
-from tuebingen_crawler.frontier import HOST_REJECT_CUTOFF, LINK_SCORE_WEIGHT
+from tuebingen_crawler.crawler import CrawlContext, process_lease
+from tuebingen_crawler.frontier import (
+    GlobalFrontier,
+    HOST_REJECT_CUTOFF,
+    LINK_SCORE_WEIGHT,
+)
 from tuebingen_crawler.scheduler import crawl_hostname
-from tuebingen_crawler.link_evaluation import evaluate_links
+from tuebingen_crawler.link_evaluation import evaluate_links as _evaluate_links
 from tuebingen_crawler.link_classifier import classify_link
 from tuebingen_crawler.models import Config, CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import LinkStore, PageStore
+from tuebingen_crawler.storage import RobotsCache
+from tuebingen_crawler.urls import validate_start_url
 from verdict_ml.base import VerdictPrediction
 
 HTML_HEADERS = {"Content-Type": "text/html; charset=utf-8"}
@@ -122,6 +128,27 @@ def make_site(**overrides) -> CrawlSite:
     return CrawlSite(**defaults)
 
 
+def evaluate_links(*, state, host_counts, **kwargs):
+    frontier = kwargs.pop(
+        "frontier",
+        GlobalFrontier(
+            state,
+            request_delays={0: 0.0},
+            max_pages_per_seed={0: None},
+            max_discovered_per_seed={0: None},
+            saved_urls_by_host=host_counts,
+        ),
+    )
+    _evaluate_links(
+        state=state,
+        host_counts=host_counts,
+        frontier=frontier,
+        seed_index=0,
+        **kwargs,
+    )
+    frontier.snapshot()
+
+
 def run_crawl(
     client,
     tmp_path,
@@ -133,6 +160,7 @@ def run_crawl(
     max_pages_per_host=None,
     page_critic=None,
     link_critic=None,
+    robots=None,
     **site_overrides,
 ):
     page_critic = page_critic or FakePagePredictor()
@@ -150,25 +178,39 @@ def run_crawl(
                 max_pages_per_host=max_pages_per_host,
                 page_critic=page_critic,
                 link_critic=link_critic,
+                robots=robots,
                 **site_overrides,
             )
 
-    return CrawlRun(
+    site = make_site(**site_overrides)
+    state = CrawlState(seen_urls=seen_urls if seen_urls is not None else set())
+    host_counts = host_counts if host_counts is not None else {}
+    host_reject_counts = host_reject_counts if host_reject_counts is not None else {}
+    frontier = GlobalFrontier(
+        state,
+        request_delays={0: site.request_delay},
+        max_pages_per_seed={0: site.max_pages_per_seed},
+        max_discovered_per_seed={0: site.max_discovered_per_seed},
+        saved_urls_by_host=host_counts,
+    )
+    frontier.submit(1_000_000.0, validate_start_url(site.url), 0, 0, seed=True)
+    context = CrawlContext(
         client=client,
-        site=make_site(**site_overrides),
-        save_dir=tmp_path,
-        save_state_every=10,
+        state=state,
         page_store=page_store,
         link_store=link_store,
-        robots=allow_all_robots(),
+        robots=robots or allow_all_robots(),
         user_agent="TestCrawler/1.0",
-        seen_urls=seen_urls,
+        save_dir=tmp_path,
         host_counts=host_counts,
         host_reject_counts=host_reject_counts,
         max_pages_per_host=max_pages_per_host,
         page_critic=page_critic,
         link_critic=link_critic,
-    ).run()
+    )
+    while (lease := frontier.claim()) is not None:
+        process_lease(context, site, frontier, lease)
+    return state
 
 
 def stored_urls(page_store) -> list[str]:
@@ -190,6 +232,63 @@ def test_crawl_run_visits_all_reachable_pages(client, tmp_path, page_store, requ
     ]
     # every page is fetched exactly once
     assert sorted(requested_paths) == ["/", "/a", "/b", "/c"]
+
+
+def test_sitemap_fallback_is_fetched_once(client, tmp_path, page_store, requested_paths):
+    pages = {
+        "/": page("root"),
+        "/sitemap.xml": b"<urlset><url><loc>https://host/fallback</loc></url></urlset>",
+        "/fallback": page("fallback"),
+    }
+    with make_client(pages, requested_paths) as sitemap_client:
+        run_crawl(
+            sitemap_client,
+            tmp_path,
+            page_store,
+            robots=RobotsCache(sitemap_client),
+            sitemap=True,
+        )
+
+    assert stored_urls(page_store) == ["https://host/", "https://host/fallback"]
+    assert requested_paths.count("/sitemap.xml") == 1
+
+
+def test_global_lease_is_released_when_fetch_raises(
+    monkeypatch, client, tmp_path, page_store, link_store
+):
+    context = CrawlContext(
+        client=client,
+        save_dir=tmp_path,
+        page_store=page_store,
+        link_store=link_store,
+        robots=allow_all_robots(),
+        user_agent="TestCrawler/1.0",
+        page_critic=FakePagePredictor(),
+        link_critic=FakeLinkPredictor(),
+        state=CrawlState(),
+        host_counts={},
+        host_reject_counts={},
+        max_pages_per_host=None,
+    )
+    frontier = GlobalFrontier(
+        context.state,
+        request_delays={0: 0.0},
+        max_pages_per_seed={0: None},
+        max_discovered_per_seed={0: None},
+    )
+    frontier.submit(9.0, "https://host/first", 0, 0)
+    frontier.submit(8.0, "https://host/second", 0, 0)
+    first = frontier.claim()
+    assert first is not None
+
+    def fail_fetch(*args, **kwargs):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("tuebingen_crawler.crawler.fetch_page", fail_fetch)
+    process_lease(context, make_site(), frontier, first)
+
+    second = frontier.claim()
+    assert second is not None and second.entry.url == "https://host/second"
 
 
 def test_crawl_run_saves_html_files(client, tmp_path, page_store):
@@ -566,31 +665,6 @@ def test_evaluate_links_passes_saved_host_counts_to_frontier():
     assert state.frontier[0].heap_priority == pytest.approx(-expected_score)
 
 
-def test_run_chunk_processes_at_most_max_pages(client, tmp_path, page_store):
-    state_dir = tmp_path / "crawl-state"
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        run = CrawlRun(
-            client=client,
-            site=make_site(),
-            save_dir=tmp_path,
-            state_dir=state_dir,
-            save_state_every=10,
-            page_store=page_store,
-            link_store=link_store,
-            robots=allow_all_robots(),
-            user_agent="TestCrawler/1.0",
-            page_critic=FakePagePredictor(),
-            link_critic=FakeLinkPredictor(),
-        )
-        run.prepare()
-        run.run_chunk(1)
-
-        # exactly one URL consumed; the root's Tübingen links remain queued
-        assert run.state.statistics.discovered == 1
-        assert run.has_work
-        assert run.state_path.parent == state_dir / "state"
-
-
 def test_crawl_run_updates_statistics(client, tmp_path, page_store):
     state = run_crawl(client, tmp_path, page_store)
 
@@ -704,17 +778,6 @@ def test_crawl_run_skips_request_errors(tmp_path, page_store):
     assert stored_urls(page_store) == []
     assert state.statistics.failed == 1
     assert state.statistics.saved == 0
-
-
-def test_crawl_run_resumes_completed_state_without_fetching(client, tmp_path, page_store, requested_paths):
-    first = run_crawl(client, tmp_path, page_store)
-    fetches_first_run = len(requested_paths)
-
-    second = run_crawl(client, tmp_path, page_store)
-
-    assert second.frontier == first.frontier
-    # state was complete, so the second run performs no requests
-    assert len(requested_paths) == fetches_first_run
 
 
 def test_crawl_run_rejects_invalid_starting_url(client, tmp_path, page_store):

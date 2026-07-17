@@ -7,9 +7,7 @@ import pytest
 from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
 from tuebingen_crawler.storage import (
     RobotsCache,
-    generate_shared_state_path,
-    generate_state_path,
-    load_or_create_state,
+    generate_global_shared_state_path,
     load_robots,
     load_shared_state,
     load_seed_toml,
@@ -80,31 +78,36 @@ def test_robots_cache_is_per_origin():
     assert requests == ["https://host/robots.txt", "http://host/robots.txt"]
 
 
-def test_generate_state_path_is_deterministic(tmp_path):
-    first = generate_state_path(tmp_path, "www.tuepedia.de", "https://www.tuepedia.de/")
-    second = generate_state_path(tmp_path, "www.tuepedia.de", "https://www.tuepedia.de/")
-    assert first == second
-    assert first.parent == tmp_path / "state"
-    assert first.name.startswith("crawl_state-")
-    assert "tuepedia.de" in first.name
-    assert first.suffix == ".json"
+def test_robots_cache_returns_stdlib_sitemap_directives():
+    def handler(request):
+        return httpx.Response(
+            200,
+            text="User-agent: *\nSitemap: https://host/sitemap.xml\n",
+            request=request,
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        cache = RobotsCache(client)
+        assert cache.site_maps("https://host/page") == ["https://host/sitemap.xml"]
 
 
-def test_generate_state_path_differs_per_start_url(tmp_path):
-    first = generate_state_path(tmp_path, "host", "https://host/a")
-    second = generate_state_path(tmp_path, "host", "https://host/b")
-    assert first != second
+def test_robots_cache_logs_a_missing_sitemap_once(caplog):
+    def handler(request):
+        return httpx.Response(200, text="User-agent: *\n", request=request)
+
+    caplog.set_level("INFO", logger="tuebingen_crawler.storage")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        cache = RobotsCache(client)
+        assert cache.site_maps("https://host/first") == []
+        assert cache.site_maps("https://host/second") == []
+
+    assert [record.message for record in caplog.records] == [
+        "No sitemap declared in robots.txt for https://host"
+    ]
 
 
-def test_generate_state_path_differs_per_host(tmp_path):
-    first = generate_state_path(tmp_path, "alpha.example", "https://alpha.example/a")
-    second = generate_state_path(tmp_path, "beta.example", "https://beta.example/a")
-    assert first != second
-    assert first.parent == second.parent == tmp_path / "state"
-
-
-def test_generate_shared_state_path(tmp_path):
-    assert generate_shared_state_path(tmp_path) == tmp_path / "state" / "shared_state.json"
+def test_generate_global_shared_state_path(tmp_path):
+    assert generate_global_shared_state_path(tmp_path) == tmp_path / "state" / "global_seen.json"
 
 
 def test_save_html_writes_file_under_normalized_hostname(tmp_path):
@@ -118,7 +121,7 @@ def test_save_html_writes_file_under_normalized_hostname(tmp_path):
     assert saved.read_bytes() == body
 
 
-def test_save_state_omits_shared_sets(tmp_path):
+def test_save_state_omits_shared_sets_but_keeps_seen_sitemaps(tmp_path):
     path = tmp_path / "state" / "crawl_state.json"
     state = CrawlState(
         frontier=[
@@ -127,6 +130,7 @@ def test_save_state_omits_shared_sets(tmp_path):
         ],
         seen_urls={"https://host/", "https://host/a"},
         seen_texts={123, 456},
+        seen_sitemaps={"https://host/sitemap.xml"},
         queued_urls_by_host={"host": 2},
         counter=2,
         statistics=Statistics(fetched=1, discovered=2, failed=0, saved=1),
@@ -139,13 +143,14 @@ def test_save_state_omits_shared_sets(tmp_path):
     assert loaded.frontier == state.frontier
     assert loaded.seen_urls == set()
     assert loaded.seen_texts == set()
+    assert loaded.seen_sitemaps == {"https://host/sitemap.xml"}
     assert loaded.queued_urls_by_host == state.queued_urls_by_host
     assert loaded.counter == state.counter
     assert loaded.statistics == state.statistics
 
 
 def test_save_and_load_shared_state_roundtrip(tmp_path):
-    path = generate_shared_state_path(tmp_path)
+    path = generate_global_shared_state_path(tmp_path)
     save_shared_state(path, {"https://host/a", "https://host/b"}, {123, 456})
 
     assert load_shared_state(path) == ({"https://host/a", "https://host/b"}, {123, 456})
@@ -226,46 +231,3 @@ def test_load_state_corrupt_json_raises(tmp_path):
 
     with pytest.raises(Exception):
         load_state(path)
-
-
-def test_load_or_create_state_initializes_new_state_with_seed(tmp_path):
-    seen_urls: set[str] = set()
-    seen_texts: set[int] = set()
-
-    state = load_or_create_state(
-        tmp_path / "crawl_state.json",
-        "https://host/",
-        seen_urls,
-        seen_texts,
-    )
-
-    assert state.seen_urls is seen_urls
-    assert state.seen_texts is seen_texts
-    assert state.seen_urls == {"https://host/"}
-    assert state.frontier == [FrontierEntry(-1_000_000.0, 1, "https://host/", 0)]
-    assert state.counter == 1
-
-
-def test_load_or_create_state_uses_shared_seen_sets_for_loaded_state(tmp_path):
-    path = tmp_path / "crawl_state.json"
-    path.write_text(
-        json.dumps(
-            {
-                "frontier": [[-1.0, 1, "https://host/a", 1]],
-                "seen_urls": ["https://host/a"],
-                "seen_texts": [123],
-            }
-        ),
-        encoding="utf-8",
-    )
-    seen_urls = {"https://other/"}
-    seen_texts = {456}
-
-    state = load_or_create_state(path, "https://host/", seen_urls, seen_texts)
-
-    assert state.seen_urls is seen_urls
-    assert state.seen_texts is seen_texts
-    assert state.seen_urls == {"https://other/", "https://host/a"}
-    assert state.seen_texts == {123, 456}
-    assert state.frontier == [FrontierEntry(-1.0, 1, "https://host/a", 1)]
-    assert state.queued_urls_by_host == {"host": 1}

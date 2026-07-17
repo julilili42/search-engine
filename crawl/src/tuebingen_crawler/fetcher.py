@@ -4,7 +4,7 @@ import logging
 import time
 import httpx
 from http import HTTPStatus
-from .models import CrawlState, CrawlSite, FetchResult
+from .models import CrawlSite, FetchResult
 
 logger = logging.getLogger(__name__)
 
@@ -14,22 +14,19 @@ def fetch_page(
     client: httpx.Client,
     url: str,
     site: CrawlSite,
-    state: CrawlState,
 ) -> FetchResult | None:
     try:
         result = fetch_bytes(
             client=client,
             url=url,
+            request_timeout=site.request_timeout,
             retry_delay=site.retry_delay,
             retries=site.retries,
         )
     except Exception:
         logger.error("%-7s | %-3s | %-5.1s | %s", "FAILED", "-", "-", url)
-        state.statistics.failed += 1
         return None
 
-    state.statistics.fetched += 1
-    time.sleep(site.request_delay)
     return result
 
 def fetch_bytes(
@@ -37,13 +34,14 @@ def fetch_bytes(
     url: str,
     retry_delay: float,
     retries: int,
+    request_timeout: float = 30.0,
 ) -> FetchResult:
     for attempt in range(retries):
         if attempt > 0:
             logger.info("Retry attempt %d...", attempt)
 
         try:
-            response = client.get(url, follow_redirects=True)
+            response = client.get(url, follow_redirects=True, timeout=request_timeout)
             status_code = response.status_code
             content_type = response.headers.get("Content-Type", "")
             media_type = content_type.partition(";")[0].strip().lower()

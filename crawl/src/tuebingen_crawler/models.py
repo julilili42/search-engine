@@ -54,6 +54,7 @@ class CrawlSite(BaseModel):
     retry_delay: float = 10.0
     request_delay: float = 0.01
     retries: int = Field(default=2, ge=1)
+    sitemap: bool = False
 
 @dataclass(order=True)
 class FrontierEntry:
@@ -61,15 +62,16 @@ class FrontierEntry:
     sequence: int
     url: str = field(compare=False)
     depth: int = field(compare=False)
+    seed_index: int = field(default=0, compare=False)
 
 @dataclass
 class CrawlState:
     frontier: list[FrontierEntry] = field(default_factory=list)
     seen_urls: set[str] = field(default_factory=set)
     seen_texts: set[int] = field(default_factory=set)
-    # limits amount of same host pops
-    recent_pop_hosts: list[str] = field(default_factory=list)
+    seen_sitemaps: set[str] = field(default_factory=set)
     # limits amount of same host pushes
     queued_urls_by_host: dict[str, int] = field(default_factory=dict)
     counter: int = 0
     statistics: Statistics = field(default_factory=Statistics)
+    seed_statistics: dict[int, Statistics] = field(default_factory=dict)

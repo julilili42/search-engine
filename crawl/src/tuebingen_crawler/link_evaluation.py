@@ -9,7 +9,7 @@ from .frontier import (
     MAX_DEPTH,
     saved_host_at_cap,
     host_reject_budget_exhausted,
-    push_frontier,
+    GlobalFrontier,
 )
 from .link_classifier import LinkVerdict, classify_link
 from .models import CrawlState
@@ -134,9 +134,9 @@ def _classify_candidates(
 # per-page selection
 def _enqueue_with_page_caps(
     ctx: _LinkContext,
-    state: CrawlState,
     candidates: list[tuple[LinkVerdict, str]],
-    host_counts: dict[str, int],
+    frontier: GlobalFrontier,
+    seed_index: int,
 ) -> list[LinkCandidateRecord]:
     records: list[LinkCandidateRecord] = []
     selected_links_by_host: dict[str, int] = {}
@@ -157,15 +157,12 @@ def _enqueue_with_page_caps(
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_family_budget"))
             continue
 
-        push_frontier(
-            state,
-            _frontier_score(verdict),
-            verdict.url,
-            ctx.child_depth,
-            saved_urls_by_host=host_counts,
+        enqueued = frontier.submit(
+            _frontier_score(verdict), verdict.url, ctx.child_depth, seed_index
         )
-        # only mark URLs we actually enqueued as seen
-        state.seen_urls.add(verdict.url)
+        if not enqueued:
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="already_seen"))
+            continue
         selected_links_by_host[host] = selected_links_by_host.get(host, 0) + 1
         selected_links_by_family[family] = selected_links_by_family.get(family, 0) + 1
         records.append(_link_record(ctx, verdict, anchor, selected=True, reason=None))
@@ -183,6 +180,8 @@ def evaluate_links(
     host_counts: dict[str, int],
     max_pages_per_host: int | None,
     link_critic: LinkVerdictPredictor,
+    frontier: GlobalFrontier,
+    seed_index: int,
     host_reject_counts: dict[str, int] | None = None,
     link_store: LinkStore | None = None,
     parent_pageverdict: PageVerdictMetadata | None = None,
@@ -200,7 +199,9 @@ def evaluate_links(
     candidates, records = _classify_candidates(
         ctx, links, state, host_counts, host_reject_counts or {}, max_pages_per_host, link_critic
     )
-    records += _enqueue_with_page_caps(ctx, state, candidates, host_counts)
+    records += _enqueue_with_page_caps(
+        ctx, candidates, frontier=frontier, seed_index=seed_index
+    )
 
     if link_store is not None:
         link_store.upsert_link_candidates(records)

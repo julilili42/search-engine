@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import threading
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import httpx
 
-from .crawler import CrawlRun
-from .models import Config
+from .crawler import CrawlContext, process_lease
+from .frontier import GlobalFrontier
+from .models import Config, CrawlSite, CrawlState
 from .save_pages import LinkStore, PageStore
-from .storage import RobotsCache, generate_shared_state_path, load_shared_state, save_shared_state
+from .storage import (
+    RobotsCache,
+    generate_global_shared_state_path,
+    generate_global_state_path,
+    load_shared_state,
+    load_state,
+    save_shared_state,
+    save_state,
+)
+from .urls import validate_start_url
 from verdict_ml.link.predict import LinkVerdictPredictor
 from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
 
-# pages a worker crawls between stop-flag checks
-WORKER_CHUNK = 5
-# fixed worker pool for the global best-first scheduler
-# must be smaller then seed count
 GLOBAL_FRONTIER_WORKERS = 8
 
 
@@ -32,164 +37,127 @@ def crawl_hostname(
     link_critic: LinkVerdictPredictor,
 ) -> None:
     state_dir = config.state_dir or config.save_dir
-    shared_state_path = generate_shared_state_path(state_dir)
+    state_path = generate_global_state_path(state_dir)
+    shared_state_path = generate_global_shared_state_path(state_dir)
+    state, loaded = load_state(state_path)
     seen_urls, seen_texts = load_shared_state(shared_state_path)
-    shared_state_lock = threading.Lock()
+    seen_urls.update(state.seen_urls)
+    seen_texts.update(state.seen_texts)
+    state.seen_urls = seen_urls
+    state.seen_texts = seen_texts
+    host_counts = page_store.host_counts()
+    headers = {"Accept": config.accept, "User-Agent": config.user_agent}
 
-    def persist_shared_state() -> None:
-        with shared_state_lock:
-            save_shared_state(shared_state_path, seen_urls, seen_texts)
+    with httpx.Client(headers=headers) as client:
+        robots = RobotsCache(client)
+        sites = _prepare_sites(config, robots)
+        frontier = GlobalFrontier(
+            state,
+            request_delays={seed_index: site.request_delay for seed_index, site in sites.items()},
+            max_pages_per_seed={
+                seed_index: site.max_pages_per_seed for seed_index, site in sites.items()
+            },
+            max_discovered_per_seed={
+                seed_index: site.max_discovered_per_seed for seed_index, site in sites.items()
+            },
+            saved_urls_by_host=host_counts,
+        )
+        if not loaded:
+            for seed_index, site in sites.items():
+                frontier.submit(
+                    1_000_000.0,
+                    validate_start_url(site.url),
+                    0,
+                    seed_index,
+                    seed=True,
+                )
 
-    host_counts: dict[str, int] = page_store.host_counts()
-    host_reject_counts: dict[str, int] = {}
-
-    # run lifecycle
-    with contextlib.ExitStack() as clients:
-        runs = _prepare_runs(
-            config,
-            page_store,
-            link_store,
-            page_critic,
-            link_critic,
-            clients,
-            seen_urls=seen_urls,
-            seen_texts=seen_texts,
-            save_shared_state=persist_shared_state,
+        context = CrawlContext(
+            client=client,
+            state=state,
+            page_store=page_store,
+            link_store=link_store,
+            robots=robots,
+            user_agent=config.user_agent,
+            save_dir=config.save_dir,
             host_counts=host_counts,
-            host_reject_counts=host_reject_counts,
+            host_reject_counts={},
+            max_pages_per_host=config.max_pages_per_host,
+            page_critic=page_critic,
+            link_critic=link_critic,
         )
         try:
-            _run_parallel(runs)
-        finally:
-            _finalize_runs(runs)
-            persist_shared_state()
-
-
-# builds and prepares one CrawlRun per seed
-def _prepare_runs(
-    config: Config,
-    page_store: PageStore,
-    link_store: LinkStore,
-    page_critic: PageVerdictPredictor,
-    link_critic: LinkVerdictPredictor,
-    clients: contextlib.ExitStack,
-    *,
-    seen_urls: set[str],
-    seen_texts: set[int],
-    save_shared_state: Callable[[], None],
-    host_counts: dict[str, int],
-    host_reject_counts: dict[str, int],
-) -> list[CrawlRun]:
-    headers = {"Accept": config.accept, "User-Agent": config.user_agent}
-    # one shared robots.txt cache
-    robots = RobotsCache(clients.enter_context(httpx.Client(headers=headers)))
-    runs: list[CrawlRun] = []
-    for site in config.sites:
-        try:
-            client = clients.enter_context(
-                httpx.Client(timeout=site.request_timeout, headers=headers)
+            _run_global(
+                frontier,
+                sites,
+                context,
+                config.save_state_every,
+                state_path,
+                shared_state_path,
             )
-            # skip seeds which categorically disallow crawling
-            if not robots.can_fetch(config.user_agent, site.url):
+        finally:
+            save_state(state_path, frontier.snapshot())
+            save_shared_state(shared_state_path, state.seen_urls, state.seen_texts)
+            state.statistics.print()
+
+
+def _prepare_sites(config: Config, robots: RobotsCache) -> dict[int, CrawlSite]:
+    sites = {}
+    for seed_index, site in enumerate(config.sites):
+        try:
+            canonical_url = validate_start_url(site.url)
+            if not robots.can_fetch(config.user_agent, canonical_url):
                 logger.warning("Skipping %s because robots.txt disallows it", site.url)
                 continue
-
-            run = CrawlRun(
-                client=client,
-                site=site,
-                save_dir=config.save_dir,
-                state_dir=config.state_dir,
-                save_state_every=config.save_state_every,
-                page_store=page_store,
-                link_store=link_store,
-                robots=robots,
-                user_agent=config.user_agent,
-                seen_urls=seen_urls,
-                seen_texts=seen_texts,
-                save_shared_state=save_shared_state,
-                host_counts=host_counts,
-                host_reject_counts=host_reject_counts,
-                max_pages_per_host=config.max_pages_per_host,
-                page_critic=page_critic,
-                link_critic=link_critic,
-            )
-            run.prepare()
-            runs.append(run)
-        # one bad seed must not abort the crawl
+            sites[seed_index] = site
         except Exception as exc:
             logger.error("Seed %s failed to start; skipping: %s", site.url, exc)
-            continue
-    return runs
+    return sites
 
 
-# a fixed pool of workers always picks the seed whose best queued link scores highest across all seeds
-def _run_parallel(runs: list[CrawlRun]) -> None:
-    if not runs:
+def _run_global(
+    frontier: GlobalFrontier,
+    sites: dict[int, CrawlSite],
+    context: CrawlContext,
+    save_state_every: int,
+    state_path: Path,
+    shared_state_path: Path,
+) -> None:
+    if not sites:
         return
-    stop = threading.Event()
-    ready = threading.Condition()
-    busy: set[int] = set()
-    dead: set[int] = set()
-    failures: list[tuple[str, Exception]] = []
+    checkpoint_lock = threading.Lock()
+    last_checkpoint = 0
 
-    def _best_available() -> int | None:
-        candidates = [
-            index
-            for index, run in enumerate(runs)
-            if index not in busy and index not in dead and run.has_work
-        ]
-        if not candidates:
-            return None
-        return min(candidates, key=lambda index: runs[index].head_priority)
+    def checkpoint() -> None:
+        nonlocal last_checkpoint
+        if save_state_every <= 0:
+            return
+        with frontier.lock:
+            discovered = frontier.state.statistics.discovered
+        if discovered - last_checkpoint < save_state_every:
+            return
+        with checkpoint_lock:
+            with frontier.lock:
+                discovered = frontier.state.statistics.discovered
+                if discovered - last_checkpoint < save_state_every:
+                    return
+                snapshot = frontier.snapshot()
+                last_checkpoint = discovered
+                save_state(state_path, snapshot)
+                save_shared_state(
+                    shared_state_path, snapshot.seen_urls, snapshot.seen_texts
+                )
 
-    def work() -> None:
-        while not stop.is_set():
-            with ready:
-                index = _best_available()
-                while index is None:
-                    if not busy:
-                        return  
-                    ready.wait(timeout=1.0)
-                    if stop.is_set():
-                        return
-                    index = _best_available()
-                busy.add(index)
-            run = runs[index]
-            try:
-                run.run_chunk(WORKER_CHUNK)
-            except Exception as exc:
-                logger.exception("Seed %s failed; dropping it", run.site.url)
-                with ready:
-                    dead.add(index)
-                    failures.append((run.site.url, exc))
-            finally:
-                with ready:
-                    busy.discard(index)
-                    ready.notify_all()
+    def worker() -> None:
+        while (lease := frontier.claim()) is not None:
+            site = sites.get(lease.entry.seed_index)
+            if site is None:
+                logger.warning("Dropping frontier entry for removed seed %s", lease.entry.seed_index)
+                frontier.finish(lease, saved=False)
+            else:
+                process_lease(context, site, frontier, lease)
+            checkpoint()
 
-    worker_count = min(len(runs), GLOBAL_FRONTIER_WORKERS)
-    with ThreadPoolExecutor(max_workers=worker_count) as pool:
-        futures = [pool.submit(work) for _ in range(worker_count)]
-        try:
-            for future in futures:
-                future.result()
-        except BaseException:
-            stop.set()
-            with ready:
-                ready.notify_all()
-            raise
-
-    if failures:
-        failed_urls = ", ".join(url for url, _ in failures)
-        raise RuntimeError(f"Crawler finished with failed seed(s): {failed_urls}") from failures[0][1]
-
-
-def _finalize_runs(runs: list[CrawlRun]) -> None:
-    # persist final states
-    for run in runs:
-        try:
-            run.finalize()
-        except Exception as exc:
-            logger.error("Failed to persist state for %s: %s", run.site.url, exc)
-    for run in runs:
-        run.state.statistics.print()
+    with ThreadPoolExecutor(max_workers=GLOBAL_FRONTIER_WORKERS) as pool:
+        for future in [pool.submit(worker) for _ in range(GLOBAL_FRONTIER_WORKERS)]:
+            future.result()
