@@ -8,7 +8,7 @@ import os
 import threading
 from dataclasses import asdict
 from pathlib import Path
-from .models import CrawlSite, CrawlState, FrontierEntry, Statistics
+from .models import CrawlSite, CrawlState, Statistics
 from .urls import normalize_host, url_slug
 from .frontier import count_frontier_hosts
 import hashlib
@@ -34,14 +34,15 @@ def save_html(hostname: str, base_dir: Path, page_url: str, body: bytes) -> str:
     return str(path)
 
 
-# loads the `robots.txt` covering `url` and returns its parser
-def load_robots(client: httpx.Client, url: str) -> RobotFileParser:
+def _origin(url: str) -> str | None:
     parsed = urlparse(url)
-
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError(f"Invalid site URL: {url}")
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
 
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+
+def _load_robots(client: httpx.Client, origin: str, url: str) -> RobotFileParser:
+    robots_url = f"{origin}/robots.txt"
 
     parser = RobotFileParser()
     parser.set_url(robots_url)
@@ -65,7 +66,7 @@ def load_robots(client: httpx.Client, url: str) -> RobotFileParser:
         return parser
 
 
-# robots.txt parsers per origin, shared across all seeds and threads
+# robots.txt parsers and missing-sitemap logs, cached per origin
 class RobotsCache:
     def __init__(self, client: httpx.Client) -> None:
         self._client = client
@@ -74,34 +75,36 @@ class RobotsCache:
         self._lock = threading.Lock()
 
     def can_fetch(self, user_agent: str, url: str) -> bool:
-        parser = self._parser_for(url)
-        return parser is not None and parser.can_fetch(user_agent, url)
+        cached = self._cached_parser(url)
+        if cached is None:
+            return False
+        _, parser = cached
+        return parser.can_fetch(user_agent, url)
 
     def site_maps(self, url: str) -> list[str]:
-        parser = self._parser_for(url)
-        if parser is None:
+        cached = self._cached_parser(url)
+        if cached is None:
             return []
+        origin, parser = cached
         site_maps = parser.site_maps() or []
         if site_maps:
             return site_maps
-        origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
         with self._lock:
             if origin not in self._reported_missing_sitemaps:
                 logger.info("No sitemap declared in robots.txt for %s", origin)
                 self._reported_missing_sitemaps.add(origin)
         return []
 
-    def _parser_for(self, url: str) -> RobotFileParser | None:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    def _cached_parser(self, url: str) -> tuple[str, RobotFileParser] | None:
+        origin = _origin(url)
+        if origin is None:
             return None
-        origin = f"{parsed.scheme}://{parsed.netloc}"
         with self._lock:
             parser = self._parsers.get(origin)
             if parser is None:
-                parser = load_robots(self._client, url)
+                parser = _load_robots(self._client, origin, url)
                 self._parsers[origin] = parser
-        return parser
+        return origin, parser
 
 
 # load and validate seed toml list
@@ -126,14 +129,6 @@ def load_seed_toml(path: Path) -> list[CrawlSite]:
         return []
 
 
-def generate_global_state_path(state_dir: Path) -> Path:
-    return state_dir / "state" / "global_frontier.json"
-
-
-def generate_global_shared_state_path(state_dir: Path) -> Path:
-    return state_dir / "state" / "global_seen.json"
-
-
 def _write_json(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
@@ -142,18 +137,10 @@ def _write_json(path: Path, data: dict[str, object]) -> None:
 
 
 # saving of intermediate state
-def save_state(path: Path, state: CrawlState) -> None:
-    data = {
-        "frontier": [asdict(entry) for entry in state.frontier],
-        "queued_urls_by_host": dict(state.queued_urls_by_host),
-        "counter": state.counter,
-        "statistics": asdict(state.statistics),
-        "seen_sitemaps": sorted(state.seen_sitemaps),
-        "seed_statistics": {
-            str(seed_index): asdict(statistics)
-            for seed_index, statistics in state.seed_statistics.items()
-        },
-    }
+def save_crawl_state(path: Path, state: CrawlState) -> None:
+    data = asdict(state)
+    del data["seen_urls"], data["seen_texts"]
+    data["seen_sitemaps"] = sorted(state.seen_sitemaps)
     _write_json(path, data)
 
 
@@ -161,79 +148,40 @@ def save_shared_state(path: Path, seen_urls: set[str], seen_texts: set[int]) -> 
     _write_json(
         path,
         {
-            "seen_urls": sorted(seen_urls.copy()),
-            "seen_texts": sorted(seen_texts.copy()),
+            "seen_urls": sorted(seen_urls),
+            "seen_texts": sorted(seen_texts),
         },
     )
 
-
+# shared deduplication state across all crawl hosts
 def load_shared_state(path: Path) -> tuple[set[str], set[int]]:
     if not path.exists():
+        logger.info("No shared state found %s.", path)
         return set(), set()
 
-    data = json.loads(path.read_text(encoding="utf-8"))
-    seen_urls = {url for url in data.get("seen_urls", []) if isinstance(url, str)}
-    seen_texts = {fingerprint for fingerprint in data.get("seen_texts", []) if isinstance(fingerprint, int)}
-    return seen_urls, seen_texts
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        state = TypeAdapter(CrawlState).validate_python(data)
+        logger.info("Shared state was loaded successfully.")
+        return state.seen_urls, state.seen_texts
+    except Exception as exc:
+        logger.error("Failed to load shared state %s.", exc)
+        raise
 
 
-# loading of intermediate state, to continue crawling process where it was stopped
-def load_state(path: Path) -> tuple[CrawlState, bool]:
-    path = Path(path)
+# global crawl state, persisted between crawl runs
+def load_crawl_state(path: Path) -> tuple[CrawlState, bool]:
     if not path.exists():
         logger.info("No intermediate state found %s.", path)
         return CrawlState(), False
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        frontier = [_frontier_entry(entry) for entry in data.get("frontier", [])]
-        heapq.heapify(frontier)
-        seen_texts = {
-            fingerprint
-            for fingerprint in data.get("seen_texts", [])
-            if isinstance(fingerprint, int)
-        }
-        state = CrawlState(
-            frontier=frontier,
-            seen_urls=set(data.get("seen_urls", [])),
-            seen_texts=seen_texts,
-            seen_sitemaps={
-                sitemap for sitemap in data.get("seen_sitemaps", []) if isinstance(sitemap, str)
-            },
-            queued_urls_by_host=count_frontier_hosts(frontier),
-            counter=data.get("counter", 0),
-            statistics=Statistics(**data.get("statistics", {})),
-            seed_statistics={
-                int(seed_index): Statistics(**statistics)
-                for seed_index, statistics in data.get("seed_statistics", {}).items()
-                if isinstance(statistics, dict)
-            },
-        )
+        state = TypeAdapter(CrawlState).validate_python(data)
+        state.queued_urls_by_host = count_frontier_hosts(state.frontier)
+        heapq.heapify(state.frontier)
         logger.info("Intermediate state was loaded successfully.")
         return state, True
     except Exception as exc:
         logger.error("Failed to load intermediate state %s.", exc)
         raise
-
-
-def _frontier_entry(entry: object) -> FrontierEntry:
-    if isinstance(entry, dict):
-        return FrontierEntry(
-            heap_priority=float(entry["heap_priority"]),
-            sequence=int(entry["sequence"]),
-            url=str(entry["url"]),
-            depth=int(entry["depth"]),
-            seed_index=int(entry.get("seed_index", 0)),
-        )
-
-    if isinstance(entry, (list, tuple)) and len(entry) in {4, 5}:
-        heap_priority, sequence, url, depth, *rest = entry
-        return FrontierEntry(
-            heap_priority=float(heap_priority),
-            sequence=int(sequence),
-            url=str(url),
-            depth=int(depth),
-            seed_index=int(rest[0]) if rest else 0,
-        )
-
-    raise ValueError(f"Invalid frontier entry: {entry!r}")

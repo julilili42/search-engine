@@ -12,7 +12,7 @@ from .scheduler import crawl_hostname
 from .storage import load_seed_toml
 from .models import Config
 from .save_pages import LinkStore, PageStore
-from .paths import DEFAULT_DATA_DIR, DEFAULT_SEED_PATH
+from .paths import DEFAULT_DATA_DIR, DEFAULT_SEED_PATH, crawl_paths
 from .verdict_models import load_verdict_models
 
 def run_crawl(
@@ -26,8 +26,7 @@ def run_crawl(
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-    html_dir = data_dir / "html"
-    db_path = data_dir / "pages.sqlite"
+    html_dir, db_path = crawl_paths(data_dir)
     html_dir.mkdir(parents=True, exist_ok=True)
 
     sites = load_seed_toml(seed_path)
@@ -37,6 +36,7 @@ def run_crawl(
         state_dir=data_dir,
         max_pages_per_host=MAX_SAVED_PAGES_PER_HOST,
     )
+
     try:
         verdict_models = load_verdict_models()
     except FileNotFoundError as exc:

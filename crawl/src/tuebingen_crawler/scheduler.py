@@ -10,15 +10,14 @@ import httpx
 from .crawler import CrawlContext, process_lease
 from .frontier import GlobalFrontier
 from .models import Config, CrawlSite, CrawlState
+from .paths import global_frontier_state_path, global_seen_state_path
 from .save_pages import LinkStore, PageStore
 from .storage import (
     RobotsCache,
-    generate_global_shared_state_path,
-    generate_global_state_path,
     load_shared_state,
-    load_state,
+    load_crawl_state,
     save_shared_state,
-    save_state,
+    save_crawl_state,
 )
 from .urls import validate_start_url
 from verdict_ml.link.predict import LinkVerdictPredictor
@@ -37,14 +36,10 @@ def crawl_hostname(
     link_critic: LinkVerdictPredictor,
 ) -> None:
     state_dir = config.state_dir or config.save_dir
-    state_path = generate_global_state_path(state_dir)
-    shared_state_path = generate_global_shared_state_path(state_dir)
-    state, loaded = load_state(state_path)
-    seen_urls, seen_texts = load_shared_state(shared_state_path)
-    seen_urls.update(state.seen_urls)
-    seen_texts.update(state.seen_texts)
-    state.seen_urls = seen_urls
-    state.seen_texts = seen_texts
+    state_path = global_frontier_state_path(state_dir)
+    shared_state_path = global_seen_state_path(state_dir)
+    state, loaded = load_crawl_state(state_path)
+    state.seen_urls, state.seen_texts = load_shared_state(shared_state_path)
     host_counts = page_store.host_counts()
     headers = {"Accept": config.accept, "User-Agent": config.user_agent}
 
@@ -96,23 +91,25 @@ def crawl_hostname(
                 shared_state_path,
             )
         finally:
-            save_state(state_path, frontier.snapshot())
+            save_crawl_state(state_path, frontier.snapshot())
             save_shared_state(shared_state_path, state.seen_urls, state.seen_texts)
             state.statistics.print()
 
 
 def _prepare_sites(config: Config, robots: RobotsCache) -> dict[int, CrawlSite]:
-    sites = {}
+    eligible_sites = {}
     for seed_index, site in enumerate(config.sites):
         try:
             canonical_url = validate_start_url(site.url)
-            if not robots.can_fetch(config.user_agent, canonical_url):
-                logger.warning("Skipping %s because robots.txt disallows it", site.url)
-                continue
-            sites[seed_index] = site
-        except Exception as exc:
-            logger.error("Seed %s failed to start; skipping: %s", site.url, exc)
-    return sites
+        except ValueError as exc:
+            logger.error("Skipping invalid seed %s: %s", site.url, exc)
+            continue
+
+        if not robots.can_fetch(config.user_agent, canonical_url):
+            logger.warning("Skipping %s because robots.txt disallows it", site.url)
+            continue
+        eligible_sites[seed_index] = site
+    return eligible_sites
 
 
 def _run_global(
@@ -132,21 +129,14 @@ def _run_global(
         nonlocal last_checkpoint
         if save_state_every <= 0:
             return
-        with frontier.lock:
+        with checkpoint_lock, frontier.lock:
             discovered = frontier.state.statistics.discovered
-        if discovered - last_checkpoint < save_state_every:
-            return
-        with checkpoint_lock:
-            with frontier.lock:
-                discovered = frontier.state.statistics.discovered
-                if discovered - last_checkpoint < save_state_every:
-                    return
-                snapshot = frontier.snapshot()
-                last_checkpoint = discovered
-                save_state(state_path, snapshot)
-                save_shared_state(
-                    shared_state_path, snapshot.seen_urls, snapshot.seen_texts
-                )
+            if discovered - last_checkpoint < save_state_every:
+                return
+            snapshot = frontier.snapshot()
+            last_checkpoint = discovered
+            save_crawl_state(state_path, snapshot)
+            save_shared_state(shared_state_path, snapshot.seen_urls, snapshot.seen_texts)
 
     def worker() -> None:
         while (lease := frontier.claim()) is not None:
