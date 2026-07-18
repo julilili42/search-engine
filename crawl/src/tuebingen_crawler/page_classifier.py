@@ -7,8 +7,6 @@ from enum import StrEnum
 from verdict_ml.page.features import PageVerdictInput
 
 from .models import Language
-from .tuebingen_terms import has_tuebingen
-
 @dataclass(frozen=True)
 class PageClassifierConfig:
     index_threshold: float = 0.70
@@ -21,7 +19,6 @@ CLASSIFIER_CONFIG = PageClassifierConfig()
 
 class PageIndexExclusion(StrEnum):
     LOW_PAGEVERDICT_SCORE = "low_pageverdict_score"
-    OFF_TOPIC = "off_topic"
     NON_ENGLISH = "non_english"
 
 
@@ -40,12 +37,11 @@ class PageVerdict:
     label: str
     model: str
     snippet: str
-    topical: bool = True
     english: bool = True
 
     @property
     def should_index(self) -> bool:
-        return self.english and self.topical and self.score >= CLASSIFIER_CONFIG.index_threshold
+        return self.english and self.score >= CLASSIFIER_CONFIG.index_threshold
 
     @property
     def decision_label(self) -> PageDecision:
@@ -63,8 +59,6 @@ class PageVerdict:
             return PageIndexExclusion.NON_ENGLISH
         if self.score < CLASSIFIER_CONFIG.index_threshold:
             return PageIndexExclusion.LOW_PAGEVERDICT_SCORE
-        if not self.topical:
-            return PageIndexExclusion.OFF_TOPIC
         return None
 
 
@@ -94,10 +88,6 @@ def _relevance(score: float) -> float:
     if score >= CLASSIFIER_CONFIG.index_threshold:
         return 3.0 + 2.0 * ((score - CLASSIFIER_CONFIG.index_threshold) / (CLASSIFIER_CONFIG.strong_threshold - CLASSIFIER_CONFIG.index_threshold))
     return 2.0 * (score / CLASSIFIER_CONFIG.index_threshold)
-
-
-def is_tuebingen_topical(title: str, url: str, text: str) -> bool:
-    return has_tuebingen(title) or has_tuebingen(url) or has_tuebingen(text)
 
 
 def classify_page(
@@ -130,6 +120,5 @@ def classify_page(
         label=prediction.label,
         model=str(prediction.model_path),
         snippet=snippet,
-        topical=is_tuebingen_topical(title, url, text),
         english=language == Language.EN,
     )

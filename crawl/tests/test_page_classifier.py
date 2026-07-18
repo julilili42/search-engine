@@ -102,8 +102,7 @@ def test_classify_page_uses_serp_like_feature_fields():
     assert example.text == "Body excerpt."
 
 
-def test_classify_page_gates_off_topic_page_even_with_high_score():
-    # a confidently-scored page that never mentions Tübingen is off-topic drift
+def test_classify_page_indexes_high_score_without_keyword_gate():
     verdict = classify_page(
         "https://www.visit-mv.com/family",
         "Family Vacation at the Baltic Sea in Mecklenburg-Vorpommern",
@@ -112,12 +111,11 @@ def test_classify_page_gates_off_topic_page_even_with_high_score():
         predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
     )
 
-    assert not verdict.should_index
-    assert verdict.index_exclusion is PageIndexExclusion.OFF_TOPIC
+    assert verdict.should_index
+    assert verdict.index_exclusion is None
 
 
-def test_classify_page_indexes_topical_page_without_tuebingen_in_title():
-    # Tübingen cue in the body is enough to count as on-topic
+def test_classify_page_indexes_high_score_page_with_tuebingen_in_body():
     verdict = classify_page(
         "https://example.com/old-town",
         "Old Town",

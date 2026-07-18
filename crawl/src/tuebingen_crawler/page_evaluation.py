@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 # check-and-add must be atomic
 _SEEN_TEXTS_LOCK = threading.Lock()
 
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -43,14 +42,6 @@ def _log_index_exclusion(verdict: PageVerdict, status_code: int, url: str) -> No
                 status_code,
                 verdict.score or 0.0,
                 verdict.relevance,
-                url,
-            )
-        case PageIndexExclusion.OFF_TOPIC:
-            logger.debug(
-                "%-7s | %3d | pv=%0.3f | %s",
-                "OFFTOPIC",
-                status_code,
-                verdict.score or 0.0,
                 url,
             )
         case PageIndexExclusion.NON_ENGLISH:
