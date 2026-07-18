@@ -13,7 +13,11 @@ from tuebingen_crawler.frontier import (
     LINK_SCORE_WEIGHT,
 )
 from tuebingen_crawler.scheduler import crawl_hostname
-from tuebingen_crawler.link_evaluation import evaluate_links as _evaluate_links
+from tuebingen_crawler.link_evaluation import (
+    MAX_SELECTED_LINKS_PER_TARGET_HOST,
+    MAX_SELECTED_LINKS_PER_URL_FAMILY,
+    evaluate_links as _evaluate_links,
+)
 from tuebingen_crawler.link_classifier import classify_link
 from tuebingen_crawler.models import Config, CrawlSite, CrawlState
 from tuebingen_crawler.save_pages import LinkStore, PageStore
@@ -544,8 +548,8 @@ def test_evaluate_links_skips_model_verdict_for_skipable_link(tmp_path):
 
 def test_evaluate_links_caps_links_per_url_family(tmp_path):
     state = CrawlState()
-    # five links all in the same family (host + leading "news" segment)
-    links = [(f"/news/{i}", "Tübingen") for i in range(5)]
+    # Links all in the same family (host + leading "news" segment).
+    links = [(f"/news/{i}", "Tübingen") for i in range(MAX_SELECTED_LINKS_PER_URL_FAMILY + 2)]
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
         evaluate_links(
             state=state,
@@ -563,9 +567,8 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
             "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
         ).fetchall()
 
-    # only MAX_SELECTED_LINKS_PER_URL_FAMILY of the five are enqueued
-    assert len(state.frontier) == 3
-    assert sum(row["selected"] for row in rows) == 3
+    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_URL_FAMILY
+    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_URL_FAMILY
     capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
     assert len(capped) == 2
     # capped links would have been enqueued absent the family budget
@@ -574,7 +577,7 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
 
 def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_path):
     state = CrawlState()
-    links = [(f"/news/{i}", "Tübingen") for i in range(5)]
+    links = [(f"/news/{i}", "Tübingen") for i in range(MAX_SELECTED_LINKS_PER_URL_FAMILY + 2)]
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
         evaluate_links(
             state=state,
@@ -592,8 +595,8 @@ def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_pa
             "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
         ).fetchall()
 
-    assert len(state.frontier) == 4
-    assert sum(row["selected"] for row in rows) == 4
+    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_URL_FAMILY + 1
+    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_URL_FAMILY + 1
     capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
     assert len(capped) == 1
     assert capped[0]["should_enqueue"] == 1
@@ -602,7 +605,10 @@ def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_pa
 def test_evaluate_links_caps_links_per_host(tmp_path):
     state = CrawlState()
     # different first path segments avoid the URL-family cap; only the host cap applies
-    links = [(f"https://example.com/section-{i}", "Tübingen") for i in range(12)]
+    links = [
+        (f"https://example.com/section-{i}", "Tübingen")
+        for i in range(MAX_SELECTED_LINKS_PER_TARGET_HOST + 4)
+    ]
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
         evaluate_links(
             state=state,
@@ -620,8 +626,8 @@ def test_evaluate_links_caps_links_per_host(tmp_path):
             "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
         ).fetchall()
 
-    assert len(state.frontier) == 8
-    assert sum(row["selected"] for row in rows) == 8
+    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_TARGET_HOST
+    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_TARGET_HOST
     capped = [row for row in rows if row["rejection_reason"] == "page_host_budget"]
     assert len(capped) == 4
     assert all(row["should_enqueue"] == 1 for row in capped)

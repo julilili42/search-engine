@@ -18,8 +18,8 @@ from .urls import canonical_url, normalize_host
 from verdict_ml.link.predict import LinkVerdictPredictor
 
 # per-page selection budgets
-MAX_SELECTED_LINKS_PER_URL_FAMILY = 3
-MAX_SELECTED_LINKS_PER_TARGET_HOST = 8
+MAX_SELECTED_LINKS_PER_URL_FAMILY = 6
+MAX_SELECTED_LINKS_PER_TARGET_HOST = 16
 HIGH_CONFIDENCE_LINK_SCORE = 0.50
 
 _LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
