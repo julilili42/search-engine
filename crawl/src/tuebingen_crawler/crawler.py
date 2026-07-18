@@ -37,22 +37,16 @@ class CrawlContext:
     page_critic: PageVerdictPredictor
     link_critic: LinkVerdictPredictor
 
-
+# Process one globally scheduled URL and release its host in all cases.
 def process_lease(
     context: CrawlContext, site: CrawlSite, frontier: GlobalFrontier, lease: CrawlLease
 ) -> None:
-    """Process one globally scheduled URL and release its host in all cases."""
     current_url, depth = lease.entry.url, lease.entry.depth
     saved = False
     try:
         hostname = normalize_host(urlparse(current_url).hostname)
-        with frontier.lock:
-            if saved_host_at_cap(context.host_counts, context.max_pages_per_host, hostname):
-                return
-            if host_reject_budget_exhausted(
-                context.host_counts, context.host_reject_counts, hostname
-            ):
-                return
+        if not _host_has_budget(context, frontier, hostname):
+            return
 
         if not context.robots.can_fetch(context.user_agent, current_url):
             logger.debug("Skipping disallowed URL: %s", current_url)
@@ -60,27 +54,7 @@ def process_lease(
                 context.state.statistics.failed += 1
             return
 
-        if site.sitemap and _same_origin(current_url, site.url):
-            sitemap_urls = context.robots.site_maps(current_url)
-            fallback = not sitemap_urls
-            if fallback:
-                parsed = urlparse(current_url)
-                sitemap_urls = [f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"]
-            with frontier.lock:
-                pending = sitemap_urls[0] not in context.state.seen_sitemaps
-            if pending:
-                queued = ingest_sitemaps(
-                    context.client,
-                    sitemap_urls,
-                    current_url,
-                    context.state,
-                    frontier,
-                    lease.entry.seed_index,
-                    site.request_delay,
-                    site.request_timeout,
-                )
-                if fallback and not queued:
-                    logger.info("No sitemap URLs found for %s", parsed.netloc)
+        _ingest_site_sitemap(context, site, frontier, lease, current_url)
 
         fetch_result = fetch_page(context.client, current_url, site)
         with frontier.lock:
@@ -89,7 +63,6 @@ def process_lease(
                 return
             frontier.record_fetch()
 
-            # ponytail: one lock serializes shared crawl state; split it only if model work bottlenecks.
             follow_links = evaluate_page(
                 page_store=context.page_store,
                 link_store=context.link_store,
@@ -130,6 +103,51 @@ def process_lease(
             context.state.statistics.failed += 1
     finally:
         frontier.finish(lease, saved=saved)
+
+
+# Check host page and reject budgets.
+def _host_has_budget(context: CrawlContext, frontier: GlobalFrontier, hostname: str) -> bool:
+    with frontier.lock:
+        return not saved_host_at_cap(
+            context.host_counts, context.max_pages_per_host, hostname
+        ) and not host_reject_budget_exhausted(
+            context.host_counts, context.host_reject_counts, hostname
+        )
+
+
+# Ingest a same-origin sitemap once when the seed opts in.
+def _ingest_site_sitemap(
+    context: CrawlContext,
+    site: CrawlSite,
+    frontier: GlobalFrontier,
+    lease: CrawlLease,
+    current_url: str,
+) -> None:
+    if not site.sitemap or not _same_origin(current_url, site.url):
+        return
+
+    sitemap_urls = context.robots.site_maps(current_url)
+    fallback = not sitemap_urls
+    parsed = urlparse(current_url)
+    if fallback:
+        sitemap_urls = [f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"]
+    with frontier.lock:
+        pending = sitemap_urls[0] not in context.state.seen_sitemaps
+    if not pending:
+        return
+
+    queued = ingest_sitemaps(
+        context.client,
+        sitemap_urls,
+        current_url,
+        context.state,
+        frontier,
+        lease.entry.seed_index,
+        site.request_delay,
+        site.request_timeout,
+    )
+    if fallback and not queued:
+        logger.info("No sitemap URLs found for %s", parsed.netloc)
 
 
 def _same_origin(left: str, right: str) -> bool:

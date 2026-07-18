@@ -58,35 +58,14 @@ def count_frontier_hosts(frontier: list[FrontierEntry]) -> dict[str, int]:
     return counts
 
 
-# priority scoring
-def _push_priority_score(
-    score: float,
-    depth: int,
-    host: str,
-    *,
-    queued_urls_by_host: dict[str, int],
-    saved_urls_by_host: dict[str, int],
-) -> float:
-    queued = queued_urls_by_host.get(host, 0)
-    saved = saved_urls_by_host.get(host, 0)
-    host_saturation = math.log1p(queued + saved)
-    return (
-        score
-        - DEPTH_PENALTY * depth
-        - HOST_SATURATION_PENALTY * host_saturation
-    )
-
-
 @dataclass(frozen=True)
 class CrawlLease:
     entry: FrontierEntry
     host: str
     claimed_at: float
 
-
+# One in-process frontier, with one concurrent request per host.
 class GlobalFrontier:
-    """One in-process frontier, with one concurrent request per host."""
-
     def __init__(
         self,
         state: CrawlState,
@@ -96,20 +75,27 @@ class GlobalFrontier:
         max_discovered_per_seed: dict[int, int | None],
         saved_urls_by_host: dict[str, int] | None = None,
     ) -> None:
+        # configuration
         self.state = state
         self.request_delays = request_delays
         self.max_pages_per_seed = max_pages_per_seed
         self.max_discovered_per_seed = max_discovered_per_seed
         self.saved_urls_by_host = saved_urls_by_host if saved_urls_by_host is not None else {}
+
+        # synchronization
         self.lock = threading.RLock()
         self._condition = threading.Condition(self.lock)
-        self._ready = []
-        self._delayed = []
+
+        # host scheduling
+        self._ready_hosts = []
+        self._delayed_hosts = []
         self._queues: dict[str, list[FrontierEntry]] = {}
         self._versions: dict[str, int] = {}
         self._next_allowed: dict[str, float] = {}
         self._host_delays: dict[str, float] = {}
         self._in_flight: set[str] = set()
+
+        # seed scheduling
         self._in_flight_by_seed: dict[int, int] = {}
         self._blocked_hosts_by_seed: dict[int, set[str]] = {}
 
@@ -122,76 +108,81 @@ class GlobalFrontier:
             for host in self._queues:
                 self._schedule(host)
 
+    # Score a URL using depth and host saturation.
+    def _priority_score(self, score: float, depth: int, host: str) -> float:
+        queued = self.state.queued_urls_by_host.get(host, 0)
+        saved = self.saved_urls_by_host.get(host, 0)
+        return score - DEPTH_PENALTY * depth - HOST_SATURATION_PENALTY * math.log1p(queued + saved)
+
+    # Atomically deduplicate and enqueue one URL.
     def submit(
         self, score: float, url: str, depth: int, seed_index: int, *, seed: bool = False
     ) -> bool:
-        """Atomically deduplicate and enqueue one URL."""
         host = _host(url)
         with self.lock:
             if not seed and url in self.state.seen_urls:
                 return False
             self.state.seen_urls.add(url)
             self.state.counter += 1
-            priority_score = _push_priority_score(
-                score,
-                depth,
-                host,
-                queued_urls_by_host=self.state.queued_urls_by_host,
-                saved_urls_by_host=self.saved_urls_by_host,
-            )
+            priority_score = self._priority_score(score, depth, host)
             self._add_entry(
-                FrontierEntry(-priority_score, self.state.counter, url, depth, seed_index)
+                FrontierEntry(-priority_score, self.state.counter, url, depth, seed_index), host
             )
             self._schedule(host)
             return True
 
+    # Wait for and lease the globally best eligible URL, or finish when empty.
     def claim(self) -> CrawlLease | None:
-        """Wait for and lease the globally best eligible URL, or finish when empty."""
         with self.lock:
             while True:
                 now = time.monotonic()
                 self._promote_ready(now)
-                while self._ready:
-                    _, version, host = heapq.heappop(self._ready)
-                    if version != self._versions.get(host) or host in self._in_flight:
-                        continue
-                    queue = self._queues.get(host)
-                    if not queue:
-                        continue
-                    entry = heapq.heappop(queue)
-                    self._decrement_queued(host)
-                    seed_status = self._seed_status(entry.seed_index)
-                    if seed_status == "exhausted":
-                        self._schedule(host)
-                        continue
-                    if seed_status == "blocked":
-                        heapq.heappush(queue, entry)
-                        self.state.queued_urls_by_host[host] = (
-                            self.state.queued_urls_by_host.get(host, 0) + 1
-                        )
-                        self._blocked_hosts_by_seed.setdefault(entry.seed_index, set()).add(host)
-                        continue
-                    self._in_flight.add(host)
-                    self._in_flight_by_seed[entry.seed_index] = (
-                        self._in_flight_by_seed.get(entry.seed_index, 0) + 1
-                    )
-                    self.state.statistics.discovered += 1
-                    seed_stats = self.state.seed_statistics.setdefault(
-                        entry.seed_index, type(self.state.statistics)()
-                    )
-                    seed_stats.discovered += 1
-                    return CrawlLease(entry, host, now)
+                while self._ready_hosts:
+                    _, version, host = heapq.heappop(self._ready_hosts)
+                    lease = self._claim_host(host, version, now)
+                    if lease is not None:
+                        return lease
 
-                if self._delayed:
-                    delay = max(0.0, self._delayed[0][0] - time.monotonic())
+                if self._delayed_hosts:
+                    delay = max(0.0, self._delayed_hosts[0][0] - time.monotonic())
                     self._wait(delay)
                 elif self._in_flight:
                     self._wait()
                 else:
                     return None
 
+    # Claim the best queued URL for one host while the frontier lock is held.
+    def _claim_host(self, host: str, version: int, claimed_at: float) -> CrawlLease | None:
+        if version != self._versions.get(host) or host in self._in_flight:
+            return None
+        queue = self._queues.get(host)
+        if not queue:
+            return None
+
+        entry = heapq.heappop(queue)
+        self._decrement_queued(host)
+        seed_status = self._seed_status(entry.seed_index)
+        if seed_status == "exhausted":
+            self._schedule(host)
+            return None
+        if seed_status == "blocked":
+            heapq.heappush(queue, entry)
+            self.state.queued_urls_by_host[host] = self.state.queued_urls_by_host.get(host, 0) + 1
+            self._blocked_hosts_by_seed.setdefault(entry.seed_index, set()).add(host)
+            return None
+
+        self._in_flight.add(host)
+        self._in_flight_by_seed[entry.seed_index] = (
+            self._in_flight_by_seed.get(entry.seed_index, 0) + 1
+        )
+        self.state.statistics.discovered += 1
+        self.state.seed_statistics.setdefault(
+            entry.seed_index, type(self.state.statistics)()
+        ).discovered += 1
+        return CrawlLease(entry, host, claimed_at)
+
+    # Always release a lease, including after a fetch or parser failure.
     def finish(self, lease: CrawlLease, *, saved: bool) -> None:
-        """Always release a lease, including after a fetch or parser failure."""
         with self.lock:
             self._in_flight.discard(lease.host)
             seed_index = lease.entry.seed_index
@@ -214,15 +205,16 @@ class GlobalFrontier:
         with self.lock:
             self.state.statistics.fetched += 1
 
+    # Materialize host queues for the existing JSON state serializer.
     def snapshot(self) -> CrawlState:
-        """Materialize host queues for the existing JSON state serializer."""
         with self.lock:
             self.state.frontier = [entry for queue in self._queues.values() for entry in queue]
             heapq.heapify(self.state.frontier)
             return self.state
 
-    def _add_entry(self, entry: FrontierEntry) -> None:
-        host = _host(entry.url)
+    def _add_entry(self, entry: FrontierEntry, host: str | None = None) -> None:
+        if host is None:
+            host = _host(entry.url)
         queue = self._queues.setdefault(host, [])
         heapq.heappush(queue, entry)
         self.state.queued_urls_by_host[host] = self.state.queued_urls_by_host.get(host, 0) + 1
@@ -261,21 +253,21 @@ class GlobalFrontier:
         version = self._versions.get(host, 0) + 1
         self._versions[host] = version
         if self._next_allowed.get(host, 0.0) <= time.monotonic():
-            heapq.heappush(self._ready, (self._queues[host][0].heap_priority, version, host))
+            heapq.heappush(self._ready_hosts, (self._queues[host][0].heap_priority, version, host))
         else:
-            heapq.heappush(self._delayed, (self._next_allowed[host], version, host))
+            heapq.heappush(self._delayed_hosts, (self._next_allowed[host], version, host))
         self._notify()
 
     def _promote_ready(self, now: float) -> None:
-        while self._delayed and self._delayed[0][0] <= now:
-            _, version, host = heapq.heappop(self._delayed)
+        while self._delayed_hosts and self._delayed_hosts[0][0] <= now:
+            _, version, host = heapq.heappop(self._delayed_hosts)
             if (
                 version != self._versions.get(host)
                 or host in self._in_flight
                 or not self._queues.get(host)
             ):
                 continue
-            heapq.heappush(self._ready, (self._queues[host][0].heap_priority, version, host))
+            heapq.heappush(self._ready_hosts, (self._queues[host][0].heap_priority, version, host))
 
     def _wait(self, timeout: float | None = None) -> None:
         self._condition.wait(timeout=timeout)
