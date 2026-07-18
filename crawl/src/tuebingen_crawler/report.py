@@ -242,7 +242,3 @@ def report_main(argv: Sequence[str] | None = None) -> None:
     print(format_report(report))
     if args.json is not None:
         args.json.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-
-if __name__ == "__main__":
-    report_main()
