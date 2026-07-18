@@ -21,11 +21,11 @@ class FetchResult:
 class Config:
     sites: list[CrawlSite] = field(default_factory=list)
     accept: str = "text/html"
-    user_agent: str = "SimpleLinkCrawler/0.1"
+    user_agent: str = "Crawler/0.1"
     save_dir: Path = field(default_factory=lambda: Path("data"))
     state_dir: Path | None = None
     save_state_every: int = 10
-    # global diversity cap on saved pages per host; None = unlimited
+    # global diversity cap on saved pages per host > None = unlimited
     max_pages_per_host: int | None = None
 
 @dataclass
