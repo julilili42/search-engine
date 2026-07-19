@@ -17,7 +17,7 @@ Run commands from the repository root.
 
 ```bash
 uv run crawl
-uv run crawl report --db data/pages.sqlite
+uv run crawl report --db data/db/pages.sqlite
 uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
 ```
 
@@ -27,18 +27,19 @@ uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
   opt-in same-origin sitemap discovery (`robots.txt`, then `/sitemap.xml`).
 - Workers claim URLs from one global frontier. It picks the highest-scoring
   eligible host while allowing at most one in-flight request per host.
-- HTML is saved under `data/html/<host>/`; global state is saved as
+- HTML is saved under `data/html/<host>/`; logs are written to
+  `data/log/crawl.log`; global state is saved as
   `data/state/global_frontier.json`, with deduplication state in
   `data/state/global_seen.json`; page and link metadata is recorded in
-  `data/pages.sqlite`.
+  `data/db/pages.sqlite`.
 - Saved pages are capped per host, and hosts with repeated rejects and no saved
   pages are stopped early.
 
 ## Crawler Flow
 
 1. `main.py` loads seeds, models, stores, and crawl config.
-2. `scheduler.py` creates one global frontier and workers claim leases from it.
-3. `crawler.py` processes each lease, checks host budgets and `robots.txt`,
+2. `crawl_runner.py` creates one global frontier and workers claim leases from it.
+3. `lease_processor.py` processes each lease, checks host budgets and `robots.txt`,
    then fetches pages.
 4. `page_evaluation.py` parses, classifies, saves, or rejects pages.
 5. `link_evaluation.py` classifies links from saved pages and selects which
