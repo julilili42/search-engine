@@ -9,6 +9,28 @@ def normalize_host(host: str | None) -> str:
     return host.lower().removeprefix("www.")
 
 
+def host_from_url(url: str) -> str:
+    try:
+        return normalize_host(urlparse(url).hostname)
+    except ValueError:
+        return ""
+
+
+def origin(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def same_origin(left: str, right: str) -> bool:
+    left_parsed, right_parsed = urlparse(left), urlparse(right)
+    return (
+        left_parsed.scheme == right_parsed.scheme
+        and left_parsed.netloc.lower() == right_parsed.netloc.lower()
+    )
+
+
 # wrapper around canonical_url
 def validate_start_url(url: str) -> str:
     canonical_start, is_valid = canonical_url(url, url)

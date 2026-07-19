@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,11 +10,19 @@ from .dedup import is_near_duplicate, simhash
 from .extract import parse_page
 from .models import CrawlState, FetchResult
 from .page_classifier import PageIndexExclusion, PageVerdict, classify_page
-from .save_pages import LinkStore, PageStore, PageVerdictMetadata
+from .stores import LinkStore, PageStore, PageVerdictMetadata
 from .storage import save_html
 from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PageEvaluation:
+    links: list[tuple[str, str]]
+    relevance: float
+    verdict: PageVerdictMetadata
+
 
 # seen_texts is shared across crawl threads; is_near_duplicate iterates it, so
 # check-and-add must be atomic
@@ -192,7 +201,7 @@ def evaluate_page(
     hostname: str,
     depth: int,
     fetch_result: FetchResult,
-) -> tuple[list[tuple[str, str]], float, PageVerdictMetadata] | None:
+) -> PageEvaluation | None:
     if fetch_result.body is None:
         status = fetch_result.status_code
         bad_status = status < 200 or status >= 300
@@ -302,7 +311,7 @@ def evaluate_page(
         ):
             return None
 
-        return page.links, verdict.relevance, pageverdict
+        return PageEvaluation(page.links, verdict.relevance, pageverdict)
 
     index_exclusion = verdict.index_exclusion
     if index_exclusion is not None:
@@ -322,4 +331,4 @@ def evaluate_page(
             link_store=link_store,
         )
     _log_index_exclusion(verdict, fetch_result.status_code, current_url)
-    return page.links, verdict.relevance, pageverdict
+    return PageEvaluation(page.links, verdict.relevance, pageverdict)

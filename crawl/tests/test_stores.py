@@ -1,9 +1,10 @@
 import json
 import sqlite3
 
+# SQLite store tests.
 import pytest
 
-from tuebingen_crawler.save_pages import (
+from tuebingen_crawler.stores import (
     CrawlExportDB,
     LinkCandidateRecord,
     LinkStore,

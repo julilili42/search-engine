@@ -7,14 +7,11 @@ from enum import StrEnum
 from verdict_ml.page.features import PageVerdictInput
 
 from .models import Language
-@dataclass(frozen=True)
-class PageClassifierConfig:
-    index_threshold: float = 0.70
-    strong_threshold: float = 0.80
-    snippet_max_chars: int = 700
 
 
-CLASSIFIER_CONFIG = PageClassifierConfig()
+INDEX_THRESHOLD = 0.40090708816674747
+STRONG_THRESHOLD = 0.80
+SNIPPET_MAX_CHARS = 700
 
 
 class PageIndexExclusion(StrEnum):
@@ -37,17 +34,16 @@ class PageVerdict:
     label: str
     model: str
     snippet: str
-    english: bool = True
 
     @property
     def should_index(self) -> bool:
-        return self.english and self.score >= CLASSIFIER_CONFIG.index_threshold
+        return self.language is Language.EN and self.score >= INDEX_THRESHOLD
 
     @property
     def decision_label(self) -> PageDecision:
-        if self.score >= CLASSIFIER_CONFIG.strong_threshold:
+        if self.score >= STRONG_THRESHOLD:
             return PageDecision.INDEX_STRONG
-        if self.score >= CLASSIFIER_CONFIG.index_threshold:
+        if self.score >= INDEX_THRESHOLD:
             return PageDecision.INDEX_CAUTIOUS
         return PageDecision.REJECT_FOLLOW
 
@@ -55,9 +51,9 @@ class PageVerdict:
     def index_exclusion(self) -> PageIndexExclusion | None:
         if self.should_index:
             return None
-        if not self.english:
+        if self.language is not Language.EN:
             return PageIndexExclusion.NON_ENGLISH
-        if self.score < CLASSIFIER_CONFIG.index_threshold:
+        if self.score < INDEX_THRESHOLD:
             return PageIndexExclusion.LOW_PAGEVERDICT_SCORE
         return None
 
@@ -75,7 +71,7 @@ def page_snippet(description: str = "", h1: str = "", text: str = "") -> str:
     if text.strip():
         parts.append(text)
     collapsed = " ".join(" ".join(parts).split())
-    return collapsed[:CLASSIFIER_CONFIG.snippet_max_chars]
+    return collapsed[:SNIPPET_MAX_CHARS]
 
 
 def _strip_scheme(url: str) -> str:
@@ -83,11 +79,11 @@ def _strip_scheme(url: str) -> str:
 
 
 def _relevance(score: float) -> float:
-    if score >= CLASSIFIER_CONFIG.strong_threshold:
-        return 6.0 + 4.0 * ((score - CLASSIFIER_CONFIG.strong_threshold) / (1.0 - CLASSIFIER_CONFIG.strong_threshold))
-    if score >= CLASSIFIER_CONFIG.index_threshold:
-        return 3.0 + 2.0 * ((score - CLASSIFIER_CONFIG.index_threshold) / (CLASSIFIER_CONFIG.strong_threshold - CLASSIFIER_CONFIG.index_threshold))
-    return 2.0 * (score / CLASSIFIER_CONFIG.index_threshold)
+    if score >= STRONG_THRESHOLD:
+        return 6.0 + 4.0 * ((score - STRONG_THRESHOLD) / (1.0 - STRONG_THRESHOLD))
+    if score >= INDEX_THRESHOLD:
+        return 3.0 + 2.0 * ((score - INDEX_THRESHOLD) / (STRONG_THRESHOLD - INDEX_THRESHOLD))
+    return 2.0 * (score / INDEX_THRESHOLD)
 
 
 def classify_page(
@@ -120,5 +116,4 @@ def classify_page(
         label=prediction.label,
         model=str(prediction.model_path),
         snippet=snippet,
-        english=language == Language.EN,
     )

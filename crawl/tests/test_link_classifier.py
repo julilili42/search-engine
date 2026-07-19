@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tuebingen_crawler.link_classifier import classify_link, predict_link
+from tuebingen_crawler.link_classifier import classify_link
 from verdict_ml.base import VerdictPrediction
 
 
@@ -35,10 +35,10 @@ def _classify(predictor, *, url, anchor="Tübingen", depth=1):
     )
 
 
-def test_predict_link_builds_model_input():
+def test_classify_link_builds_model_input():
     predictor = FakeLinkPredictor(0.7)
 
-    prediction = predict_link(
+    verdict = classify_link(
         predictor,
         anchor="Tübingen tourism",
         target_url="https://www.tuebingen.de/en/visit",
@@ -52,7 +52,7 @@ def test_predict_link_builds_model_input():
         parent_decision="index_strong",
     )
 
-    assert prediction.positive_probability == 0.7
+    assert verdict.score == 0.7
     [example] = predictor.seen
     assert example.anchor == "Tübingen tourism"
     assert example.target_url == "https://www.tuebingen.de/en/visit"

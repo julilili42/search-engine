@@ -9,12 +9,11 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 from .models import CrawlSite, CrawlState, Statistics
-from .urls import normalize_host, url_slug
+from .urls import normalize_host, origin, url_slug
 from .frontier import count_frontier_hosts
 import hashlib
 import tomllib
 import httpx
-from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 from pydantic import TypeAdapter, ValidationError
@@ -32,13 +31,6 @@ def save_html(hostname: str, base_dir: Path, page_url: str, body: bytes) -> str:
     path = directory / file_name
     path.write_bytes(body)
     return str(path)
-
-
-def _origin(url: str) -> str | None:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def _load_robots(client: httpx.Client, origin: str, url: str) -> RobotFileParser:
@@ -96,15 +88,15 @@ class RobotsCache:
         return []
 
     def _cached_parser(self, url: str) -> tuple[str, RobotFileParser] | None:
-        origin = _origin(url)
-        if origin is None:
+        site_origin = origin(url)
+        if site_origin is None:
             return None
         with self._lock:
-            parser = self._parsers.get(origin)
+            parser = self._parsers.get(site_origin)
             if parser is None:
-                parser = _load_robots(self._client, origin, url)
-                self._parsers[origin] = parser
-        return origin, parser
+                parser = _load_robots(self._client, site_origin, url)
+                self._parsers[site_origin] = parser
+        return site_origin, parser
 
 
 # load and validate seed toml list

@@ -7,16 +7,11 @@ from selectolax.lexbor import LexborHTMLParser
 from .models import Language
 
 
-@dataclass(frozen=True)
-class ExtractConfig:
-    removed_tags: tuple[str, ...] = ("script", "style", "noscript", "template")
-    description_selectors: tuple[str, ...] = (
-        'meta[name="description"]',
-        'meta[property="og:description"]',
-    )
-
-
-EXTRACT_CONFIG = ExtractConfig()
+_REMOVED_TAGS = ("script", "style", "noscript", "template")
+_DESCRIPTION_SELECTORS = (
+    'meta[name="description"]',
+    'meta[property="og:description"]',
+)
 
 
 @dataclass
@@ -52,7 +47,7 @@ def _extract_title(tree: LexborHTMLParser) -> str:
 
 def _extract_description(tree: LexborHTMLParser) -> str:
     description = ""
-    for selector in EXTRACT_CONFIG.description_selectors:
+    for selector in _DESCRIPTION_SELECTORS:
         node = tree.css_first(selector)
         if node is not None:
             description = _normalize_text(node.attributes.get("content", ""))
@@ -76,7 +71,7 @@ def _extract_links(tree: LexborHTMLParser) -> list[tuple[str, str]]:
 
 
 def _extract_text(tree: LexborHTMLParser) -> str:
-    tree.strip_tags(list(EXTRACT_CONFIG.removed_tags), recursive=True)
+    tree.strip_tags(list(_REMOVED_TAGS), recursive=True)
     body_node = tree.body
     return (
         _normalize_text(body_node.text(deep=True, separator=" ", strip=True))

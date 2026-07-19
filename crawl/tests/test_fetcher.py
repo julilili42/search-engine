@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 import tuebingen_crawler.fetcher as fetcher
-from tuebingen_crawler.fetcher import fetch_bytes
+from tuebingen_crawler.fetcher import READ_TIMEOUT_COOLDOWN_SECONDS, fetch_bytes
 from tuebingen_crawler.storage import save_html
 
 HTML_HEADERS = {"Content-Type": "text/html; charset=utf-8"}
@@ -19,6 +19,11 @@ def sleep_calls(monkeypatch):
 
 def make_client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_fetch_bytes_requires_at_least_one_retry():
+    with httpx.Client() as client, pytest.raises(ValueError, match="at least 1"):
+        fetch_bytes(client, "https://host/", retry_delay=1.0, retries=0)
 
 
 def test_fetch_bytes_returns_html_body(sleep_calls):
@@ -120,6 +125,7 @@ def test_fetch_bytes_caps_backoff_delay_at_30s_and_returns_empty_result(sleep_ca
 
     assert result.body is None
     assert result.status_code == 429
+    assert result.cooldown_seconds == 30.0
     assert sleep_calls == [20.0, 30.0]
 
 
@@ -154,6 +160,17 @@ def test_fetch_bytes_retries_on_request_error(sleep_calls):
 
     assert result.body == b"<html>ok</html>"
     assert len(attempts) == 2
+
+
+def test_fetch_bytes_cools_down_after_final_read_timeout(sleep_calls):
+    def handler(request):
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    with make_client(handler) as client:
+        result = fetch_bytes(client, "https://host/", retry_delay=1.0, retries=2)
+
+    assert result.cooldown_seconds == READ_TIMEOUT_COOLDOWN_SECONDS
+    assert sleep_calls == [1.0]
 
 
 def test_save_html_writes_file_under_hostname(tmp_path):

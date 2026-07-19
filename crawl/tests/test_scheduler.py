@@ -1,5 +1,5 @@
 from tuebingen_crawler.frontier import GlobalFrontier
-from tuebingen_crawler.models import CrawlState
+from tuebingen_crawler.models import Config, CrawlState, MAX_SAVED_PAGES_PER_HOST
 
 
 def make_frontier(**limits):
@@ -11,6 +11,10 @@ def make_frontier(**limits):
             "max_discovered_per_seed", {0: None, 1: None}
         ),
     )
+
+
+def test_config_limits_pages_per_host_by_default():
+    assert Config().max_pages_per_host == MAX_SAVED_PAGES_PER_HOST
 
 
 def test_global_frontier_picks_the_best_url_not_the_best_seed_head():
@@ -39,6 +43,18 @@ def test_global_frontier_releases_a_host_after_a_failed_lease():
     assert second is not None and second.entry.url == "https://host.test/second"
 
 
+def test_global_frontier_delays_a_cooled_down_host():
+    frontier = make_frontier()
+    frontier.submit(9.0, "https://host.test/first", 0, 0)
+    lease = frontier.claim()
+    assert lease is not None
+
+    before = time.monotonic()
+    frontier.finish(lease, saved=False, cooldown_seconds=60.0)
+
+    assert frontier._host_scheduler._states[lease.host].next_ready_at >= before + 60.0
+
+
 def test_global_frontier_updates_a_host_head_lazily():
     frontier = make_frontier()
     frontier.submit(1.0, "https://a.test/low", 0, 0)
@@ -60,3 +76,4 @@ def test_global_frontier_keeps_a_seed_page_cap_with_multiple_hosts():
     frontier.finish(first, saved=True)
 
     assert frontier.claim() is None
+import time

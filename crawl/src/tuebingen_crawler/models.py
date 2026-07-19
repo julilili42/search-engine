@@ -5,6 +5,8 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 
+MAX_SAVED_PAGES_PER_HOST = 1000
+
 
 class Language(StrEnum):
     EN = "en"
@@ -16,6 +18,7 @@ class FetchResult:
     body: bytes | None
     status_code: int
     content_type: str
+    cooldown_seconds: float = 0.0
 
 @dataclass
 class Config:
@@ -25,8 +28,8 @@ class Config:
     save_dir: Path = field(default_factory=lambda: Path("data"))
     state_dir: Path | None = None
     save_state_every: int = 10
-    # global diversity cap on saved pages per host > None = unlimited
-    max_pages_per_host: int | None = None
+    # Saved-page limit per host; None = unlimited.
+    max_pages_per_host: int | None = MAX_SAVED_PAGES_PER_HOST
 
 @dataclass
 class Statistics:
@@ -63,6 +66,14 @@ class FrontierEntry:
     url: str = field(compare=False)
     depth: int = field(compare=False)
     seed_index: int = field(default=0, compare=False)
+
+
+@dataclass(frozen=True)
+class CrawlLease:
+    entry: FrontierEntry
+    host: str
+    claimed_at: float
+
 
 @dataclass
 class CrawlState:

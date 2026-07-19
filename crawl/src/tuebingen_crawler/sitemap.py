@@ -3,14 +3,13 @@ from __future__ import annotations
 import gzip
 import logging
 import time
-from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import httpx
 
 from .frontier import GlobalFrontier
 from .models import CrawlState
-from .urls import canonical_url
+from .urls import canonical_url, same_origin
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ def _fetch_sitemap(
         with client.stream(
             "GET", sitemap_url, follow_redirects=True, timeout=request_timeout
         ) as response:
-            if not response.is_success or not _same_origin(str(response.url), source_url):
+            if not response.is_success or not same_origin(str(response.url), source_url):
                 return None
             content_length = response.headers.get("Content-Length")
             if (
@@ -110,15 +109,7 @@ def _fetch_sitemap(
 
 def _same_origin_url(raw_url: str, base_url: str) -> str | None:
     url, valid = canonical_url(raw_url.strip(), base_url)
-    return url if valid and _same_origin(url, base_url) else None
-
-
-def _same_origin(left: str, right: str) -> bool:
-    left_parsed, right_parsed = urlparse(left), urlparse(right)
-    return (
-        left_parsed.scheme == right_parsed.scheme
-        and left_parsed.netloc.lower() == right_parsed.netloc.lower()
-    )
+    return url if valid and same_origin(url, base_url) else None
 
 
 def _locs(root: ElementTree.Element, child_tag: str) -> list[str]:

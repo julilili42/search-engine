@@ -5,22 +5,24 @@ from urllib.robotparser import RobotFileParser
 import httpx
 import pytest
 
-import tuebingen_crawler.scheduler as scheduler_module
-from tuebingen_crawler.crawler import CrawlContext, process_lease
+import tuebingen_crawler.crawl_runner as scheduler_module
+from tuebingen_crawler.lease_processor import CrawlContext, process_claimed_lease
 from tuebingen_crawler.frontier import (
     GlobalFrontier,
     HOST_REJECT_CUTOFF,
-    LINK_SCORE_WEIGHT,
 )
-from tuebingen_crawler.scheduler import crawl_hostname
+from tuebingen_crawler.crawl_runner import crawl_hostname
 from tuebingen_crawler.link_evaluation import (
+    LINK_SCORE_WEIGHT,
+    MAX_EXPLORATION_LINKS_PER_PAGE,
+    MAX_SELECTED_LINKS_PER_PAGE,
     MAX_SELECTED_LINKS_PER_TARGET_HOST,
     MAX_SELECTED_LINKS_PER_URL_FAMILY,
     evaluate_links as _evaluate_links,
 )
 from tuebingen_crawler.link_classifier import classify_link
 from tuebingen_crawler.models import Config, CrawlSite, CrawlState
-from tuebingen_crawler.save_pages import LinkStore, PageStore
+from tuebingen_crawler.stores import LinkStore, PageStore
 from tuebingen_crawler.storage import RobotsCache
 from tuebingen_crawler.urls import validate_start_url
 from verdict_ml.base import VerdictPrediction
@@ -213,7 +215,7 @@ def run_crawl(
         link_critic=link_critic,
     )
     while (lease := frontier.claim()) is not None:
-        process_lease(context, site, frontier, lease)
+        process_claimed_lease(context, site, frontier, lease)
     return state
 
 
@@ -288,8 +290,8 @@ def test_global_lease_is_released_when_fetch_raises(
     def fail_fetch(*args, **kwargs):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr("tuebingen_crawler.crawler.fetch_page", fail_fetch)
-    process_lease(context, make_site(), frontier, first)
+    monkeypatch.setattr("tuebingen_crawler.lease_processor.fetch_bytes", fail_fetch)
+    process_claimed_lease(context, make_site(), frontier, first)
 
     second = frontier.claim()
     assert second is not None and second.entry.url == "https://host/second"
@@ -521,6 +523,138 @@ def test_evaluate_links_records_link_candidates(tmp_path):
     assert row["linkverdict_model"] == "fake_link_verdict.joblib"
 
 
+def test_evaluate_links_limits_exploration_to_distinct_new_hosts(tmp_path):
+    state = CrawlState()
+    links = [
+        (f"https://new-{i}.example/page", "possible Tübingen link")
+        for i in range(MAX_EXPLORATION_LINKS_PER_PAGE + 2)
+    ]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.79),
+            link_store=link_store,
+        )
+        reasons = [
+            row[0]
+            for row in link_store.con.execute(
+                "SELECT rejection_reason FROM link_candidates WHERE selected = 0"
+            )
+        ]
+
+    assert len(state.frontier) == MAX_EXPLORATION_LINKS_PER_PAGE
+    assert reasons == ["exploration_budget"] * 2
+
+
+def test_evaluate_links_relaxes_floor_for_productive_host():
+    state = CrawlState()
+    links = [(f"https://good.example/section-{i}", "Tübingen") for i in range(4)]
+
+    evaluate_links(
+        state=state,
+        links=links,
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts={"good.example": 1},
+        max_pages_per_host=None,
+        link_critic=FakeLinkPredictor(0.50),
+    )
+
+    assert len(state.frontier) == 4
+
+
+@pytest.mark.parametrize(("depth", "score"), [(0, 0.49), (4, 0.90)])
+def test_evaluate_links_rejects_below_floor_or_beyond_depth(depth, score):
+    state = CrawlState()
+
+    evaluate_links(
+        state=state,
+        links=[("/page", "Tübingen")],
+        current_url="https://host/",
+        depth=depth,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts={},
+        max_pages_per_host=None,
+        link_critic=FakeLinkPredictor(score),
+    )
+
+    assert state.frontier == []
+
+
+def test_evaluate_links_caps_total_links_per_page(tmp_path):
+    state = CrawlState()
+    links = [
+        (f"https://new-{i}.example/page", "Tübingen")
+        for i in range(MAX_SELECTED_LINKS_PER_PAGE + 3)
+    ]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.90),
+            link_store=link_store,
+        )
+        capped = link_store.con.execute(
+            "SELECT COUNT(*) FROM link_candidates WHERE rejection_reason = 'page_total_budget'"
+        ).fetchone()[0]
+
+    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_PAGE
+    assert capped == 3
+
+
+def test_evaluate_links_reserves_exploration_slots():
+    class MixedLinkPredictor:
+        def predict(self, example):
+            probability = 0.79 if "explore" in example.target_url else 0.90
+            return VerdictPrediction(
+                label="positive",
+                positive_probability=probability,
+                model_path=Path("fake_link_verdict.joblib"),
+            )
+
+    state = CrawlState()
+    balanced = [
+        (f"https://balanced-{i}.example/page", "Tübingen")
+        for i in range(MAX_SELECTED_LINKS_PER_PAGE)
+    ]
+    exploration = [
+        (f"https://explore-{i}.example/page", "possible Tübingen link")
+        for i in range(MAX_EXPLORATION_LINKS_PER_PAGE)
+    ]
+
+    evaluate_links(
+        state=state,
+        links=balanced + exploration,
+        current_url="https://host/",
+        depth=0,
+        parent_relevance=5.0,
+        parent_host="host",
+        host_counts={},
+        max_pages_per_host=None,
+        link_critic=MixedLinkPredictor(),
+    )
+
+    selected_urls = {entry.url for entry in state.frontier}
+    assert len(selected_urls) == MAX_SELECTED_LINKS_PER_PAGE
+    assert sum("explore" in url for url in selected_urls) == MAX_EXPLORATION_LINKS_PER_PAGE
+
+
 def test_evaluate_links_skips_model_verdict_for_skipable_link(tmp_path):
     state = CrawlState()
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
@@ -560,7 +694,7 @@ def test_evaluate_links_caps_links_per_url_family(tmp_path):
             parent_host="host",
             host_counts={},
             max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.49),
+            link_critic=FakeLinkPredictor(0.60),
             link_store=link_store,
         )
         rows = link_store.con.execute(
@@ -588,7 +722,7 @@ def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_pa
             parent_host="host",
             host_counts={},
             max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.50),
+            link_critic=FakeLinkPredictor(0.80),
             link_store=link_store,
         )
         rows = link_store.con.execute(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# SQLite-backed crawl stores.
+
 import json
 import sqlite3
 import threading
@@ -106,6 +108,10 @@ _REQUIRED_LINK_CANDIDATE_TABLE_COLUMNS = (
     "created_at",
     "updated_at",
 )
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True)
@@ -303,7 +309,7 @@ class PageStore:
         pageverdict_model: str | None = None,
         pageverdict_snippet: str | None = None,
     ) -> None:
-        now = self._now()
+        now = _now()
         fetched_at = fetched_at or now
 
         with _DB_LOCK, self.con:
@@ -391,7 +397,7 @@ class PageStore:
         pageverdict_model: str | None = None,
         pageverdict_snippet: str | None = None,
     ) -> None:
-        now = self._now()
+        now = _now()
         fetched_at = fetched_at or now
 
         with _DB_LOCK, self.con:
@@ -521,11 +527,6 @@ class PageStore:
             ),
         )
 
-    @staticmethod
-    def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
-
-
 class LinkStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
@@ -624,7 +625,7 @@ class LinkStore:
         if not records:
             return
 
-        now = self._now()
+        now = _now()
         with _DB_LOCK, self.con:
             for record in records:
                 self.con.execute(
@@ -694,10 +695,6 @@ class LinkStore:
                     ),
                 )
 
-    @staticmethod
-    def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
-
     def update_link_target(
         self,
         *,
@@ -745,7 +742,7 @@ class LinkStore:
                     pageverdict_decision,
                     exclusion_reason,
                     fetched_at,
-                    self._now(),
+                    _now(),
                     url,
                 ),
             )

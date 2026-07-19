@@ -4,30 +4,12 @@ import logging
 import time
 import httpx
 from http import HTTPStatus
-from .models import CrawlSite, FetchResult
+from .models import FetchResult
 
 logger = logging.getLogger(__name__)
 
 _HTML_MEDIA_TYPES = {"text/html", "application/xhtml+xml"}
-
-def fetch_page(
-    client: httpx.Client,
-    url: str,
-    site: CrawlSite,
-) -> FetchResult | None:
-    try:
-        result = fetch_bytes(
-            client=client,
-            url=url,
-            request_timeout=site.request_timeout,
-            retry_delay=site.retry_delay,
-            retries=site.retries,
-        )
-    except Exception:
-        logger.error("%-7s | %-3s | %-5.1s | %s", "FAILED", "-", "-", url)
-        return None
-
-    return result
+READ_TIMEOUT_COOLDOWN_SECONDS = 300.0
 
 def fetch_bytes(
     client: httpx.Client,
@@ -36,6 +18,9 @@ def fetch_bytes(
     retries: int,
     request_timeout: float = 30.0,
 ) -> FetchResult:
+    if retries < 1:
+        raise ValueError("retries must be at least 1")
+
     for attempt in range(retries):
         if attempt > 0:
             logger.info("Retry attempt %d...", attempt)
@@ -47,9 +32,14 @@ def fetch_bytes(
             media_type = content_type.partition(";")[0].strip().lower()
 
             if _is_retryable_status(response):
-                # last retry no delay
+                # The host scheduler applies the final retry delay.
                 if attempt == retries - 1:
-                    return FetchResult(None, status_code, media_type)
+                    return FetchResult(
+                        None,
+                        status_code,
+                        media_type,
+                        _retry_delay_for(response, attempt, retry_delay),
+                    )
 
                 delay = _retry_delay_for(response, attempt, retry_delay)
                 logger.warning(
@@ -75,6 +65,8 @@ def fetch_bytes(
             logger.warning("Failed to fetch %s with error %s", url, exc)
 
             if attempt == retries - 1:
+                if isinstance(exc, httpx.ReadTimeout):
+                    return FetchResult(None, 0, "", READ_TIMEOUT_COOLDOWN_SECONDS)
                 raise RuntimeError(
                     f"Failed to fetch {url} after {retries} attempts"
                 ) from exc

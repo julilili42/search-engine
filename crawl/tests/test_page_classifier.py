@@ -2,7 +2,8 @@ from pathlib import Path
 
 from tuebingen_crawler.models import Language
 from tuebingen_crawler.page_classifier import (
-    CLASSIFIER_CONFIG,
+    INDEX_THRESHOLD,
+    STRONG_THRESHOLD,
     PageIndexExclusion,
     classify_page,
     page_snippet,
@@ -43,7 +44,7 @@ def test_classify_page_indexes_strong_positive_page():
         "English visitor information about Tübingen.",
         Language.EN,
         description="Official English visitor information.",
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+        predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
     assert verdict.should_index
@@ -51,7 +52,7 @@ def test_classify_page_indexes_strong_positive_page():
     assert verdict.decision_label == "index_strong"
     assert verdict.relevance >= 6.0
     assert verdict.language == "en"
-    assert verdict.score == CLASSIFIER_CONFIG.strong_threshold
+    assert verdict.score == STRONG_THRESHOLD
 
 
 def test_classify_page_indexes_mid_confidence_page_cautiously():
@@ -60,7 +61,7 @@ def test_classify_page_indexes_mid_confidence_page_cautiously():
         "Tübingen directory",
         "A narrow directory page.",
         Language.EN,
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.index_threshold),
+        predictor=FakePagePredictor(INDEX_THRESHOLD),
     )
 
     assert verdict.should_index
@@ -74,7 +75,7 @@ def test_classify_page_rejects_but_still_follows_low_score_page():
         "Tübingen",
         "A low-scoring page that still mentions Tübingen.",
         Language.EN,
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.index_threshold - 0.01, "negative"),
+        predictor=FakePagePredictor(INDEX_THRESHOLD - 0.01, "negative"),
     )
 
     assert not verdict.should_index
@@ -108,7 +109,7 @@ def test_classify_page_indexes_high_score_without_keyword_gate():
         "Family Vacation at the Baltic Sea in Mecklenburg-Vorpommern",
         "Mecklenburg-Vorpommern offers wide beaches along the Baltic Sea coast.",
         Language.EN,
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+        predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
     assert verdict.should_index
@@ -121,7 +122,7 @@ def test_classify_page_indexes_high_score_page_with_tuebingen_in_body():
         "Old Town",
         "The historic old town sits on the Neckar in Tübingen.",
         Language.EN,
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+        predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
     assert verdict.should_index
@@ -134,7 +135,7 @@ def test_classify_page_rejects_non_english_page():
         "Tübingen",
         "Tübingen ist eine Universitätsstadt am Neckar.",
         Language.DE,
-        predictor=FakePagePredictor(CLASSIFIER_CONFIG.strong_threshold),
+        predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
     assert not verdict.should_index

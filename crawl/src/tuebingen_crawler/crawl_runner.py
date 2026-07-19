@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
 
-from .crawler import CrawlContext, process_lease
+from .lease_processor import CrawlContext, process_claimed_lease
 from .frontier import GlobalFrontier
 from .models import Config, CrawlSite, CrawlState
 from .paths import global_frontier_state_path, global_seen_state_path
-from .save_pages import LinkStore, PageStore
+from .stores import LinkStore, PageStore
 from .storage import (
     RobotsCache,
     load_shared_state,
@@ -25,6 +26,7 @@ from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
 
+# Worker-pool entry point for a crawl run.
 GLOBAL_FRONTIER_WORKERS = 8
 
 
@@ -41,9 +43,10 @@ def crawl_hostname(
     state, loaded = load_crawl_state(state_path)
     state.seen_urls, state.seen_texts = load_shared_state(shared_state_path)
     host_counts = page_store.host_counts()
-    headers = {"Accept": config.accept, "User-Agent": config.user_agent}
 
-    with httpx.Client(headers=headers) as client:
+    with httpx.Client(
+        headers={"Accept": config.accept, "User-Agent": config.user_agent}
+    ) as client:
         robots = RobotsCache(client)
         sites = _prepare_sites(config, robots)
         frontier = GlobalFrontier(
@@ -60,7 +63,7 @@ def crawl_hostname(
         if not loaded:
             for seed_index, site in sites.items():
                 frontier.submit(
-                    1_000_000.0,
+                    math.inf,
                     validate_start_url(site.url),
                     0,
                     seed_index,
@@ -112,6 +115,7 @@ def _prepare_sites(config: Config, robots: RobotsCache) -> dict[int, CrawlSite]:
     return eligible_sites
 
 
+# Run crawl workers and periodically checkpoint state.
 def _run_global(
     frontier: GlobalFrontier,
     sites: dict[int, CrawlSite],
@@ -140,12 +144,7 @@ def _run_global(
 
     def worker() -> None:
         while (lease := frontier.claim()) is not None:
-            site = sites.get(lease.entry.seed_index)
-            if site is None:
-                logger.warning("Dropping frontier entry for removed seed %s", lease.entry.seed_index)
-                frontier.finish(lease, saved=False)
-            else:
-                process_lease(context, site, frontier, lease)
+            process_claimed_lease(context, sites.get(lease.entry.seed_index), frontier, lease)
             checkpoint()
 
     with ThreadPoolExecutor(max_workers=GLOBAL_FRONTIER_WORKERS) as pool:

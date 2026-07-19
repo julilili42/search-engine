@@ -4,23 +4,27 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from .frontier import (
-    ENQUEUE_FLOOR,
-    LINK_SCORE_WEIGHT,
-    MAX_DEPTH,
     saved_host_at_cap,
     host_reject_budget_exhausted,
     GlobalFrontier,
 )
 from .link_classifier import LinkVerdict, classify_link
 from .models import CrawlState
-from .save_pages import LinkCandidateRecord, LinkStore, PageVerdictMetadata
+from .stores import LinkCandidateRecord, LinkStore, PageVerdictMetadata
 from .urls import canonical_url, normalize_host
 from verdict_ml.link.predict import LinkVerdictPredictor
 
 # per-page selection budgets
+MIN_EXPLORATION_LINK_SCORE = 0.30
+MAX_DEPTH = 4
+LINK_SCORE_WEIGHT = 10.0
 MAX_SELECTED_LINKS_PER_URL_FAMILY = 6
 MAX_SELECTED_LINKS_PER_TARGET_HOST = 16
-HIGH_CONFIDENCE_LINK_SCORE = 0.50
+MAX_SELECTED_LINKS_PER_PAGE = 25
+MAX_EXPLORATION_LINKS_PER_PAGE = 3
+HIGH_CONFIDENCE_LINK_SCORE = 0.80
+PRODUCTIVE_HOST_LINK_SCORE = 0.50
+NEW_HOST_LINK_SCORE = 0.80
 
 _LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
 
@@ -56,12 +60,22 @@ def _frontier_score(verdict: LinkVerdict) -> float:
     return LINK_SCORE_WEIGHT * verdict.score
 
 
-def _can_enter_frontier(verdict: LinkVerdict) -> bool:
-    return (
-        not verdict.skipable
-        and verdict.score >= ENQUEUE_FLOOR
-        and verdict.depth <= MAX_DEPTH
-    )
+def _admission_lane(
+    ctx: _LinkContext,
+    verdict: LinkVerdict,
+    host_counts: dict[str, int],
+) -> str | None:
+    if verdict.skipable or verdict.depth > MAX_DEPTH:
+        return None
+
+    target_host = normalize_host(urlparse(verdict.url).hostname)
+    productive = target_host == ctx.parent_host or host_counts.get(target_host, 0) > 0
+    floor = PRODUCTIVE_HOST_LINK_SCORE if productive else NEW_HOST_LINK_SCORE
+    if verdict.score >= floor:
+        return "balanced"
+    if not productive and verdict.score >= MIN_EXPLORATION_LINK_SCORE:
+        return "exploration"
+    return None
 
 
 # record building
@@ -98,8 +112,8 @@ def _classify_candidates(
     host_reject_counts: dict[str, int],
     max_pages_per_host: int | None,
     link_critic: LinkVerdictPredictor,
-) -> tuple[list[tuple[LinkVerdict, str]], list[LinkCandidateRecord]]:
-    candidates: list[tuple[LinkVerdict, str]] = []
+) -> tuple[list[tuple[LinkVerdict, str, str]], list[LinkCandidateRecord]]:
+    candidates: list[tuple[LinkVerdict, str, str]] = []
     records: list[LinkCandidateRecord] = []
     for href, anchor in links:
         final_url, is_canonical = canonical_url(href, ctx.current_url)
@@ -120,31 +134,53 @@ def _classify_candidates(
             parent_score=ctx.parent_pageverdict.score,
             parent_decision=ctx.parent_pageverdict.decision or "",
         )
-        if not _can_enter_frontier(verdict) or saved_host_at_cap(
+        lane = _admission_lane(ctx, verdict, host_counts)
+        if lane is None or saved_host_at_cap(
             host_counts, max_pages_per_host, host
         ):
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="not_enqueued"))
         elif host_reject_budget_exhausted(host_counts, host_reject_counts, host):
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="host_off_topic"))
         else:
-            candidates.append((verdict, anchor))
+            candidates.append((verdict, anchor, lane))
     return candidates, records
 
 
 # per-page selection
 def _enqueue_with_page_caps(
     ctx: _LinkContext,
-    candidates: list[tuple[LinkVerdict, str]],
+    candidates: list[tuple[LinkVerdict, str, str]],
     frontier: GlobalFrontier,
     seed_index: int,
 ) -> list[LinkCandidateRecord]:
     records: list[LinkCandidateRecord] = []
     selected_links_by_host: dict[str, int] = {}
     selected_links_by_family: dict[tuple[str, str, str], int] = {}
-    for verdict, anchor in sorted(
-        candidates, key=lambda item: _frontier_score(item[0]), reverse=True
-    ):
+    selected_total = 0
+    exploration_total = 0
+    explored_hosts: set[str] = set()
+    balanced = sorted(
+        (candidate for candidate in candidates if candidate[2] == "balanced"),
+        key=lambda item: _frontier_score(item[0]),
+        reverse=True,
+    )
+    exploration = sorted(
+        (candidate for candidate in candidates if candidate[2] == "exploration"),
+        key=lambda item: _frontier_score(item[0]),
+        reverse=True,
+    )
+    balanced_slots = MAX_SELECTED_LINKS_PER_PAGE - MAX_EXPLORATION_LINKS_PER_PAGE
+    ordered = balanced[:balanced_slots] + exploration + balanced[balanced_slots:]
+    for verdict, anchor, lane in ordered:
         host = normalize_host(urlparse(verdict.url).hostname)
+        if selected_total >= MAX_SELECTED_LINKS_PER_PAGE:
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_total_budget"))
+            continue
+        if lane == "exploration" and (
+            exploration_total >= MAX_EXPLORATION_LINKS_PER_PAGE or host in explored_hosts
+        ):
+            records.append(_link_record(ctx, verdict, anchor, selected=False, reason="exploration_budget"))
+            continue
         if selected_links_by_host.get(host, 0) >= MAX_SELECTED_LINKS_PER_TARGET_HOST:
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_host_budget"))
             continue
@@ -165,6 +201,10 @@ def _enqueue_with_page_caps(
             continue
         selected_links_by_host[host] = selected_links_by_host.get(host, 0) + 1
         selected_links_by_family[family] = selected_links_by_family.get(family, 0) + 1
+        selected_total += 1
+        if lane == "exploration":
+            exploration_total += 1
+            explored_hosts.add(host)
         records.append(_link_record(ctx, verdict, anchor, selected=True, reason=None))
     return records
 
