@@ -1,11 +1,5 @@
 # City & encyclopedic
 [[sites]]
-url = "https://www.tuebingen.de/en/"
-sitemap = true
-max_pages_per_seed = 1600
-request_delay = 0.5
-
-[[sites]]
 url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
 sitemap = true
 max_pages_per_seed = 600
@@ -58,27 +52,9 @@ max_pages_per_seed = 400
 request_delay = 0.5
 
 [[sites]]
-url = "https://www.visit-bw.com/en/article/old-town-of-tubingen/c82ceb67-f78d-4b4e-8911-3972ca794cbc#/"
-sitemap = true
-max_pages_per_seed = 300
-request_delay = 0.5
-
-[[sites]]
 url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
 max_pages_per_seed = 600
 request_delay = 0.4
-
-[[sites]]
-url = "https://www.germany.travel/en/cities-culture/tuebingen.html"
-sitemap = true
-max_pages_per_seed = 600
-request_delay = 0.5
-
-[[sites]]
-url = "https://www.tuebingen-info.de/en/"
-sitemap = true
-max_pages_per_seed = 800
-request_delay = 0.5
 
 [[sites]]
 url = "https://www.krone-tuebingen.de/en/a-holiday-in-tuebingen"
@@ -561,9 +537,10 @@ max_pages_per_seed = 150
 request_delay = 0.5
 
 [[sites]]
-url = "https://www.is.mpg.de/"
-max_pages_per_seed = 200
-request_delay = 0.5
+url = "https://www.dzif.de/en/partner-sites/tubingen"
+max_pages_per_seed = 50
+max_discovered_per_seed = 100
+request_delay = 0.7
 
 [[sites]]
 url = "https://kyb.tuebingen.mpg.de/en/"
