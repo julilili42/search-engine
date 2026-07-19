@@ -1,6 +1,6 @@
 # Crawl benchmark
 
-Passively monitors a running crawl by reading `data/pages.sqlite` and writing
+Passively monitors a running crawl by reading `data/db/pages.sqlite` and writing
 JSONL snapshots. It does not import or modify crawler code.
 
 ## Usage

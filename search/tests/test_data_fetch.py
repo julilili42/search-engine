@@ -1,6 +1,9 @@
+from io import BytesIO
+
 import pytest
 
-from tuebingen_search.data_fetch import _asset_urls, _release_url
+import tuebingen_search.data_fetch as data_fetch
+from tuebingen_search.data_fetch import _asset_urls, _download, _release_url
 
 
 def test_release_url_uses_latest_or_tag():
@@ -30,3 +33,12 @@ def test_asset_urls_requires_crawl_data_assets():
 
     with pytest.raises(ValueError, match="index.bin"):
         _asset_urls({"assets": release["assets"][:1]})
+
+
+def test_download_creates_destination_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_fetch, "urlopen", lambda _: BytesIO(b"data"))
+    destination = tmp_path / "db" / "pages.sqlite"
+
+    _download("https://example.test/pages", destination)
+
+    assert destination.read_bytes() == b"data"

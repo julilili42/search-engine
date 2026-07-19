@@ -20,6 +20,9 @@ uv run index
 uv run embed
 ```
 
+The defaults are `data/db/pages.sqlite`, `data/index/index.bin`, and
+`data/embeddings/embeddings.npz`.
+
 Interactive single query:
 
 ```bash

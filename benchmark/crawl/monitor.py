@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = REPO_ROOT / "data" / "pages.sqlite"
+DEFAULT_DB = REPO_ROOT / "data" / "db" / "pages.sqlite"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "metrics"
 TOP_N = 8
 

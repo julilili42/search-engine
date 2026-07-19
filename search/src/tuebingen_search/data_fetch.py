@@ -8,11 +8,16 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import urlopen
 
-from .paths import DATA_DIR
+from .paths import DEFAULT_DB_PATH, DEFAULT_EMBEDDINGS_PATH, DEFAULT_INDEX_PATH
 
 REPOSITORY = "julilili42/search-engine"
 REQUIRED_ASSET_NAMES = ("pages.sqlite", "index.bin")
 OPTIONAL_ASSET_NAMES = ("embeddings.npz",)
+ASSET_PATHS = {
+    "pages.sqlite": DEFAULT_DB_PATH,
+    "index.bin": DEFAULT_INDEX_PATH,
+    "embeddings.npz": DEFAULT_EMBEDDINGS_PATH,
+}
 
 
 def _release_url(tag: str | None) -> str:
@@ -33,6 +38,7 @@ def _asset_urls(release: dict) -> dict[str, str]:
 
 
 def _download(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + ".tmp")
     with urlopen(url) as response, temporary.open("wb") as output:
         shutil.copyfileobj(response, output)
@@ -53,9 +59,8 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     for name in REQUIRED_ASSET_NAMES + OPTIONAL_ASSET_NAMES:
         if name not in assets:
             continue
         print(f"Downloading {name}...")
-        _download(assets[name], DATA_DIR / name)
+        _download(assets[name], ASSET_PATHS[name])

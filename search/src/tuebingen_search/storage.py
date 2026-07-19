@@ -8,7 +8,9 @@ from .models import SearchIndex, Document, Posting
 logger = logging.getLogger(__name__)
 
 def save_index(index_path: Path, search_index: SearchIndex) -> None:
-    with Path(index_path).open("wb") as index_file:
+    index_path = Path(index_path)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    with index_path.open("wb") as index_file:
         msgpack.pack(_to_msgpack(search_index), index_file, use_bin_type=True)
 
 def _to_msgpack(search_index: SearchIndex) -> dict[str, object]:
@@ -51,4 +53,3 @@ def load_index(index_path: Path | str) -> SearchIndex:
 
 def elapsed(start: float) -> str:
     return f"{time.perf_counter() - start:.6f}s"
-

@@ -78,6 +78,7 @@ class PassageEmbeddings:
 def build_embeddings(index_path: Path, out_path: Path) -> None:
     start = time.perf_counter()
     index = load_index(index_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info('Extracting passages from %d documents...', len(index.documents))
     passages: list[str] = []
