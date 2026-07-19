@@ -49,3 +49,6 @@ class SearchResult:
     path: Path
     url: str | None
     snippet: str
+    embedding_score: float | None = None
+    embedding_x: float | None = None
+    embedding_y: float | None = None

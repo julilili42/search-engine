@@ -4,9 +4,9 @@ import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from .embeddings import _get_model, embed_texts, load_embeddings
-from .search import SearchResult, load_index, search_index
+from .search import CATEGORY_X_LABEL, CATEGORY_Y_LABEL, SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
 
 
@@ -26,9 +26,11 @@ async def lifespan(app: FastAPI):
     app.state.doc_embeddings = load_embeddings(embeddings_path, app.state.index.documents)
     if app.state.doc_embeddings is None:
         logger.warning("No embeddings at %s, serving lexical ranking only.", embeddings_path)
+        app.state.category_axes = None
     else:
         logger.info("Loading embedding model...")
         _get_model()
+        app.state.category_axes = embed_texts([CATEGORY_X_LABEL, CATEGORY_Y_LABEL])
     yield
 
 
@@ -40,28 +42,13 @@ def search_api(
     q: str = Query(min_length=1),
     top_n: int = Query(10, ge=1, le=100),
     context_size: int = Query(20, ge=1, le=100),
+    cat_x: str | None = Query(None, min_length=1),
+    cat_y: str | None = Query(None, min_length=1),
 ):
-    return search_index(app.state.index, q, top_n, context_size, app.state.doc_embeddings)
-
-
-@app.get("/map")
-def map_api(x: str = Query(min_length=1), y: str = Query(min_length=1)):
-    embeddings = app.state.doc_embeddings
-    if embeddings is None:
-        raise HTTPException(status_code=503, detail="Embeddings not available, run `uv run embed`.")
-
-    document_embeddings = embeddings.mean_document_vectors()
-    if document_embeddings.shape[1] == 0:
-        raise HTTPException(status_code=503, detail='Embeddings contain no passages.')
-
-    x_axis, y_axis = embed_texts([x, y])
-    xs = document_embeddings @ x_axis
-    ys = document_embeddings @ y_axis
-    return [
-        {"url": document.url, "title": document.title, "x": float(xs[i]), "y": float(ys[i])}
-        for i, document in enumerate(app.state.index.documents)
-        if document.url
-    ]
+    category_axes = app.state.category_axes
+    if cat_x and cat_y and app.state.doc_embeddings is not None:
+        category_axes = embed_texts([cat_x, cat_y])
+    return search_index(app.state.index, q, top_n, context_size, app.state.doc_embeddings, category_axes)
 
 
 @app.get("/health")

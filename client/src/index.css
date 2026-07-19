@@ -79,3 +79,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes warp-flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}

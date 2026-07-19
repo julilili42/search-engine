@@ -34,7 +34,17 @@ ALPHA = 0.85
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     index = load_index(index_path)
     doc_embeddings = load_embeddings(DEFAULT_EMBEDDINGS_PATH, index.documents)
-    return search_index(index, query, top_n, context_size, doc_embeddings)
+    category_axes = (
+        embed_texts([CATEGORY_X_LABEL, CATEGORY_Y_LABEL])
+        if doc_embeddings is not None
+        else None
+    )
+    return search_index(index, query, top_n, context_size, doc_embeddings, category_axes)
+
+# fixed category axes the result "constellation" is placed on: how strongly a
+# result matches each label becomes its x/y coordinate in the universe view
+CATEGORY_X_LABEL = "university, research and administration"
+CATEGORY_Y_LABEL = "tourism, culture and everyday life"
 
 
 def search_index(
@@ -43,6 +53,7 @@ def search_index(
     top_n: int,
     context_size: int = 20,
     doc_embeddings: PassageEmbeddings | np.ndarray | None = None,
+    category_axes: np.ndarray | None = None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -64,6 +75,8 @@ def search_index(
     for doc_index, doc_term_positions in term_positions.items():
         scores[doc_index] += _proximity_bonus(doc_term_positions)
 
+    embedding_scores: dict[int, float] = {}
+    document_embeddings: np.ndarray | None = None
     if doc_embeddings is not None:
         passage_embeddings = _as_passage_embeddings(doc_embeddings)
         if (
@@ -73,6 +86,7 @@ def search_index(
             logger.warning('Embeddings are unusable for this index; using lexical ranking only.')
             ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
         else:
+            document_embeddings = passage_embeddings.mean_document_vectors()
             query_embedding = embed_texts([query])[0]
             semantic_scores = _best_passage_scores(passage_embeddings, query_embedding)
             lexical = heapq.nlargest(
@@ -94,14 +108,27 @@ def search_index(
                 (doc_index, scores.get(doc_index, 0.0))
                 for doc_index in sorted(candidate_ids)
             ]
-            ranked_results = _rerank(
+            reranked = _rerank(
                 candidates,
                 passage_embeddings,
                 query_embedding,
                 semantic_scores=semantic_scores,
             )[:top_n]
+            ranked_results = [(doc_index, score) for doc_index, score, _ in reranked]
+            embedding_scores = {doc_index: cosine for doc_index, _, cosine in reranked}
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
+
+    # place each result on fixed category axes (how strongly it matches
+    # CATEGORY_X_LABEL / CATEGORY_Y_LABEL) so the constellation reflects
+    # meaningful topics instead of an arbitrary rank spiral
+    embedding_coords: dict[int, tuple[float, float]] = {}
+    if document_embeddings is not None and category_axes is not None and ranked_results:
+        doc_indices = [doc_index for doc_index, _ in ranked_results]
+        coords = project_onto_categories(
+            document_embeddings[doc_indices], category_axes[0], category_axes[1]
+        )
+        embedding_coords = dict(zip(doc_indices, coords))
 
     search_results: list[SearchResult] = []
 
@@ -110,9 +137,19 @@ def search_index(
         path, url, terms = document.path, document.url, document.terms
 
         snippet = _generate_snippet(terms, term_positions.get(doc_index, {}), context_size)
+        xy = embedding_coords.get(doc_index)
 
         search_results.append(
-            SearchResult(rank=rank, score=score, path=path, url=url, snippet=snippet)
+            SearchResult(
+                rank=rank,
+                score=score,
+                path=path,
+                url=url,
+                snippet=snippet,
+                embedding_score=embedding_scores.get(doc_index),
+                embedding_x=xy[0] if xy else None,
+                embedding_y=xy[1] if xy else None,
+            )
         )
 
     logger.info("Search computation took %s", elapsed(start))
@@ -148,10 +185,9 @@ def _rerank(
     query_embedding: np.ndarray,
     alpha: float = ALPHA,
     semantic_scores: np.ndarray | None = None,
-) -> list[ScoredDocument]:
+) -> list[tuple[int, float, float]]:
     if not candidates:
         return []
-
     doc_indices = [doc_index for doc_index, _ in candidates]
     lexical = np.array([score for _, score in candidates])
 
@@ -163,7 +199,26 @@ def _rerank(
 
     blended = alpha * lexical_norm + (1 - alpha) * cosine
     order = np.argsort(-blended)
-    return [(doc_indices[i], float(blended[i])) for i in order]
+    return [(doc_indices[i], float(blended[i]), float(cosine[i])) for i in order]
+
+
+def project_onto_categories(
+    vectors: np.ndarray, x_axis: np.ndarray, y_axis: np.ndarray
+) -> list[tuple[float, float]]:
+    """Place each vector by how strongly it matches two named category embeddings."""
+    if len(vectors) == 0:
+        return []
+
+    def center_and_scale(values: np.ndarray) -> np.ndarray:
+        centered = values - values.mean()
+        std = values.std() or 1.0
+        # tanh instead of max-abs: a single outlier saturates gracefully instead of
+        # linearly compressing every near-duplicate result onto the same point
+        return np.tanh(centered / (2 * std))
+
+    xs = center_and_scale(vectors @ x_axis)
+    ys = center_and_scale(vectors @ y_axis)
+    return list(zip((float(x) for x in xs), (float(y) for y in ys)))
 
 
 def _best_window(term_positions: TermPosition) -> tuple[int, int] | None:

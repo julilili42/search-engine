@@ -3,7 +3,13 @@ import pytest
 from tuebingen_search.indexer import index
 from helpers import make_page_load
 from tuebingen_search.models import Document, Posting, SearchIndex
-from tuebingen_search.search import _generate_snippet, _proximity_bonus, search, search_index
+from tuebingen_search.search import (
+    _generate_snippet,
+    _proximity_bonus,
+    project_onto_categories,
+    search,
+    search_index,
+)
 
 PAGES = {
     "apple.html": "<html><body><p>apple apple apple banana</p></body></html>",
@@ -148,6 +154,143 @@ def test_search_does_not_read_the_source_file(tmp_path):
     assert results[0].snippet == "apple"
 
 
+def test_search_index_reports_embedding_score(tmp_path, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+
+    documents = [
+        Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",)),
+        Document(path=tmp_path / "b.html", url="https://b.test", length=1, terms=("apple",)),
+    ]
+    index = SearchIndex(
+        documents=documents,
+        inverted_index={
+            "apple": [
+                Posting(doc_index=0, score=1.0, positions=[0]),
+                Posting(doc_index=1, score=1.0, positions=[0]),
+            ]
+        },
+    )
+    doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+    monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))
+
+    results = search_index(index, "apple", top_n=10, doc_embeddings=doc_embeddings)
+
+    scores = {result.url: result.embedding_score for result in results}
+    assert scores["https://a.test"] == pytest.approx(1.0)
+    assert scores["https://b.test"] == pytest.approx(0.0)
+
+
+def test_search_index_embedding_score_is_none_without_embeddings(tmp_path):
+    index = SearchIndex(
+        documents=[
+            Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",))
+        ],
+        inverted_index={"apple": [Posting(doc_index=0, score=1.0, positions=[0])]},
+    )
+
+    results = search_index(index, "apple", top_n=10)
+
+    assert results[0].embedding_score is None
+    assert results[0].embedding_x is None
+    assert results[0].embedding_y is None
+
+
+def test_search_index_reports_embedding_coords(tmp_path, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+
+    documents = [
+        Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",)),
+        Document(path=tmp_path / "b.html", url="https://b.test", length=1, terms=("apple",)),
+    ]
+    index = SearchIndex(
+        documents=documents,
+        inverted_index={
+            "apple": [
+                Posting(doc_index=0, score=1.0, positions=[0]),
+                Posting(doc_index=1, score=1.0, positions=[0]),
+            ]
+        },
+    )
+    doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0]])
+    category_axes = np.array([[1.0, 0.0], [0.0, 1.0]])  # x-axis, y-axis
+    monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))
+
+    results = search_index(
+        index, "apple", top_n=10, doc_embeddings=doc_embeddings, category_axes=category_axes
+    )
+
+    # two distinct, unrelated embeddings should not collapse onto the same point
+    coords = {result.url: (result.embedding_x, result.embedding_y) for result in results}
+    assert coords["https://a.test"] != coords["https://b.test"]
+    assert all(v is not None for xy in coords.values() for v in xy)
+
+
+def test_search_index_embedding_coords_are_none_without_category_axes(tmp_path, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+
+    index = SearchIndex(
+        documents=[
+            Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",))
+        ],
+        inverted_index={"apple": [Posting(doc_index=0, score=1.0, positions=[0])]},
+    )
+    doc_embeddings = np.array([[1.0, 0.0]])
+    monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))
+
+    results = search_index(index, "apple", top_n=10, doc_embeddings=doc_embeddings)
+
+    assert results[0].embedding_x is None
+    assert results[0].embedding_y is None
+
+
+def test_project_onto_categories_places_identical_vectors_at_origin():
+    import numpy as np
+
+    vectors = np.array([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]])
+    x_axis = np.array([1.0, 0.0])
+    y_axis = np.array([0.0, 1.0])
+
+    coords = project_onto_categories(vectors, x_axis, y_axis)
+
+    assert coords == [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+
+
+def test_project_onto_categories_separates_by_axis_match():
+    import numpy as np
+
+    # first vector matches the x-axis label, second matches the y-axis label
+    vectors = np.array([[1.0, 0.0], [0.0, 1.0]])
+    x_axis = np.array([1.0, 0.0])
+    y_axis = np.array([0.0, 1.0])
+
+    coords = project_onto_categories(vectors, x_axis, y_axis)
+
+    assert len(coords) == 2
+    assert coords[0][0] > coords[1][0]  # first vector scores higher on x
+    assert coords[1][1] > coords[0][1]  # second vector scores higher on y
+    for x, y in coords:
+        assert -1.0 <= x <= 1.0
+        assert -1.0 <= y <= 1.0
+
+
+def test_project_onto_categories_handles_empty_input():
+    import numpy as np
+
+    assert project_onto_categories(np.empty((0, 2)), np.array([1.0, 0.0]), np.array([0.0, 1.0])) == []
+
+
 def test_rerank_blends_lexical_and_semantic_scores():
     import numpy as np
 
@@ -165,9 +308,12 @@ def test_rerank_blends_lexical_and_semantic_scores():
 
     reranked = _rerank(candidates, doc_embeddings, query_embedding, alpha=0.5)
 
-    assert [doc_index for doc_index, _ in reranked] == [1, 0, 2]
-    scores = [score for _, score in reranked]
+    assert [doc_index for doc_index, _, _ in reranked] == [1, 0, 2]
+    scores = [score for _, score, _ in reranked]
     assert scores == sorted(scores, reverse=True)
+    cosines = {doc_index: cosine for doc_index, _, cosine in reranked}
+    assert cosines[1] == pytest.approx(1.0)
+    assert cosines[0] == pytest.approx(0.0)
 
 
 def test_best_passage_score_uses_maximum_similarity():
