@@ -45,7 +45,7 @@ def crawl_hostname(
     host_counts = page_store.host_counts()
 
     with httpx.Client(
-        headers={"Accept": config.accept, "User-Agent": config.user_agent}
+        headers={"Accept": config.accept, "Accept-Language": "en", "User-Agent": config.user_agent}
     ) as client:
         robots = RobotsCache(client)
         sites = _prepare_sites(config, robots)
