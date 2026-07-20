@@ -102,7 +102,9 @@ function screenDistance(a: [number, number, number], b: [number, number, number]
 
 function layoutStars(results: SearchResult[]) {
   const toUnit = normalize(results.map(relevanceOf))
-  const hasEmbeddingCoords = results.every((r) => r.embedding_x !== null && r.embedding_y !== null)
+  const hasEmbeddingCoords = results.every(
+    (r) => Number.isFinite(r.embedding_x) && Number.isFinite(r.embedding_y),
+  )
 
   const placed = results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))

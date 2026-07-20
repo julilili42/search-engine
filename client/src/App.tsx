@@ -237,8 +237,6 @@ function App() {
       </aside>
 
       <div className="absolute top-0 left-0 z-20 w-[30rem] p-5">
-        <h1 className="mb-2 text-base leading-tight font-semibold tracking-tight drop-shadow-md">Tübingen Search</h1>
-
         <form
           onSubmit={handleSearch}
           className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-black/50 pr-1.5 pl-1.5 backdrop-blur-sm focus-within:ring-2 focus-within:ring-white/30"
