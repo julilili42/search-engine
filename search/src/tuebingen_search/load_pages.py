@@ -27,16 +27,6 @@ _PAGE_COLUMNS = ", ".join(
     (*_BASE_PAGE_COLUMNS, *_DEBUG_PAGE_COLUMNS, *_TIMESTAMP_PAGE_COLUMNS)
 )
 
-# crawler saves pages down to relevance 3.0
-MIN_INDEX_RELEVANCE = 3.5
-NOISY_HOST_MIN_INDEX_RELEVANCE = {
-    "komoot.com": 5.0,
-    "outdooractive.com": 5.0,
-    "wanderlog.com": 5.0,
-    "global.flixbus.com": 6.0,
-}
-
-
 @dataclass(frozen=True)
 class PageRecord:
     title: str
@@ -110,10 +100,6 @@ class PageLoad:
 
         return self._row_to_page(row)
 
-    @staticmethod
-    def _min_index_relevance(host: str) -> float:
-        return NOISY_HOST_MIN_INDEX_RELEVANCE.get(host, MIN_INDEX_RELEVANCE)
-
     def iter_html_pages(self) -> Iterator[PageRecord]:
         rows = self.con.execute(
             f"""
@@ -126,5 +112,4 @@ class PageLoad:
 
         for row in rows:
             page = self._row_to_page(row)
-            if page.relevance is None or page.relevance >= self._min_index_relevance(page.host):
-                yield page
+            yield page

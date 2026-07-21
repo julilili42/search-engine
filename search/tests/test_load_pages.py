@@ -43,7 +43,7 @@ def test_page_load_resolves_paths_after_project_move(tmp_path):
     assert page.path == path
 
 
-def test_iter_html_pages_skips_low_relevance_pages(tmp_path):
+def test_iter_html_pages_keeps_low_relevance_pages(tmp_path):
     site_dir = tmp_path / "html"
     site_dir.mkdir()
     path = site_dir / "page.html"
@@ -60,12 +60,10 @@ def test_iter_html_pages_skips_low_relevance_pages(tmp_path):
     con.commit()
     con.close()
 
-    assert list(pages_db.iter_html_pages()) == []
-    # below-threshold pages stay reachable by path (debug lookups)
-    assert pages_db.get_page_by_file_path(path) is not None
+    assert [page.url for page in pages_db.iter_html_pages()] == ["https://example.test/page.html"]
 
 
-def test_iter_html_pages_uses_stricter_noisy_host_threshold(tmp_path):
+def test_iter_html_pages_keeps_noisy_host_pages(tmp_path):
     site_dir = tmp_path / "html"
     site_dir.mkdir()
     path = site_dir / "page.html"
@@ -82,7 +80,7 @@ def test_iter_html_pages_uses_stricter_noisy_host_threshold(tmp_path):
     con.commit()
     con.close()
 
-    assert list(pages_db.iter_html_pages()) == []
+    assert [page.url for page in pages_db.iter_html_pages()] == ["https://example.test/page.html"]
 
 
 def test_page_load_ignores_rejected_pages_table(tmp_path):

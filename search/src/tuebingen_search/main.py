@@ -5,8 +5,14 @@ from collections.abc import Sequence
 from .embeddings import build_embeddings
 from .indexer import index
 from .search import search
-from .cli import build_index_parser, build_search_parser, build_embed_parser
+from .cli import (
+    build_index_parser,
+    build_search_parser,
+    build_embed_parser,
+    build_batch_parser,
+)
 from .load_pages import PageLoad
+from .batch import run_batch
 
 
 def index_main(argv: Sequence[str] | None = None) -> None:
@@ -41,3 +47,13 @@ def search_main(argv: Sequence[str] | None = None) -> None:
             f"    url:    {result.url}\n"
             f"    snippet: {result.snippet}"
         )
+
+
+def batch_main(argv: Sequence[str] | None = None) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    args = build_batch_parser().parse_args(argv)
+    if not args.index.exists():
+        raise SystemExit(f"Index not found: {args.index}. Run `uv run index` first.")
+    if not args.batch.exists():
+        raise SystemExit(f"Batch file not found: {args.batch}")
+    run_batch(args.index, args.batch, args.output, args.top_n)

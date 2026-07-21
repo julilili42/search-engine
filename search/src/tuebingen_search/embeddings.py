@@ -16,8 +16,8 @@ from .storage import elapsed, load_index
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "google-bert/bert-base-uncased"
-MAX_TOKENS = 512
+MODEL_NAME = "sentence-transformers/nli-mpnet-base-v2"
+MAX_TOKENS = 256
 BATCH_SIZE = 32
 
 PASSAGE_CHARS = 2000
@@ -146,7 +146,9 @@ def load_embeddings(path: Path, documents: list[Document]) -> PassageEmbeddings 
 def embed_texts(texts: list[str]) -> np.ndarray:
     tokenizer, model = _get_model()
     vectors = []
-    for start in range(0, len(texts), BATCH_SIZE):
+    num_batches = -(-len(texts) // BATCH_SIZE)
+    for batch_index, start in enumerate(range(0, len(texts), BATCH_SIZE), start=1):
+        logger.info('Encoding batch %d/%d...', batch_index, num_batches)
         inputs = tokenizer(
             texts[start : start + BATCH_SIZE],
             padding=True,

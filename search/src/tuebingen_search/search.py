@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 RERANK_CANDIDATES = 100
 SEMANTIC_CANDIDATES = 100
 # BERT supplements BM25 but should not dominate it.
-ALPHA = 0.85
+ALPHA = 0.7
 
 
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
