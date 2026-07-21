@@ -22,6 +22,7 @@ class PageEvaluation:
     links: list[tuple[str, str]]
     relevance: float
     verdict: PageVerdictMetadata
+    saved: bool
 
 
 # seen_texts is shared across crawl threads; is_near_duplicate iterates it, so
@@ -311,7 +312,7 @@ def evaluate_page(
         ):
             return None
 
-        return PageEvaluation(page.links, verdict.relevance, pageverdict)
+        return PageEvaluation(page.links, verdict.relevance, pageverdict, saved=True)
 
     index_exclusion = verdict.index_exclusion
     if index_exclusion is not None:
@@ -331,4 +332,4 @@ def evaluate_page(
             link_store=link_store,
         )
     _log_index_exclusion(verdict, fetch_result.status_code, current_url)
-    return PageEvaluation(page.links, verdict.relevance, pageverdict)
+    return PageEvaluation(page.links, verdict.relevance, pageverdict, saved=False)

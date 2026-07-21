@@ -16,10 +16,11 @@ from verdict_ml.link.predict import LinkVerdictPredictor
 
 # per-page selection budgets
 MIN_EXPLORATION_LINK_SCORE = 0.30
-MAX_DEPTH = 4
+MAX_DEPTH = 5
 LINK_SCORE_WEIGHT = 10.0
 MAX_SELECTED_LINKS_PER_URL_FAMILY = 6
 MAX_SELECTED_LINKS_PER_TARGET_HOST = 16
+MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY = MAX_SELECTED_LINKS_PER_TARGET_HOST
 MAX_SELECTED_LINKS_PER_PAGE = 25
 MAX_EXPLORATION_LINKS_PER_PAGE = 3
 HIGH_CONFIDENCE_LINK_SCORE = 0.80
@@ -27,6 +28,11 @@ PRODUCTIVE_HOST_LINK_SCORE = 0.50
 NEW_HOST_LINK_SCORE = 0.80
 
 _LANGUAGE_SEGMENTS = {"en", "eng", "english", "de", "deutsch", "german"}
+_ENGLISH_WIKIPEDIA_HOSTS = {
+    "en.m.wikipedia.org",
+    "en.wikipedia.org",
+    "simple.wikipedia.org",
+}
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,12 @@ def _url_family(url: str) -> tuple[str, str, str]:
     if first in _LANGUAGE_SEGMENTS:
         return host, first, second
     return host, first, ""
+
+
+def _url_family_limit(host: str, score: float) -> int:
+    if host in _ENGLISH_WIKIPEDIA_HOSTS:
+        return MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY
+    return MAX_SELECTED_LINKS_PER_URL_FAMILY + int(score >= HIGH_CONFIDENCE_LINK_SCORE)
 
 
 # frontier admission
@@ -186,9 +198,7 @@ def _enqueue_with_page_caps(
             continue
 
         family = _url_family(verdict.url)
-        family_limit = MAX_SELECTED_LINKS_PER_URL_FAMILY + int(
-            verdict.score >= HIGH_CONFIDENCE_LINK_SCORE
-        )
+        family_limit = _url_family_limit(host, verdict.score)
         if selected_links_by_family.get(family, 0) >= family_limit:
             records.append(_link_record(ctx, verdict, anchor, selected=False, reason="page_family_budget"))
             continue

@@ -18,6 +18,7 @@ from tuebingen_crawler.link_evaluation import (
     MAX_SELECTED_LINKS_PER_PAGE,
     MAX_SELECTED_LINKS_PER_TARGET_HOST,
     MAX_SELECTED_LINKS_PER_URL_FAMILY,
+    MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY,
     evaluate_links as _evaluate_links,
 )
 from tuebingen_crawler.link_classifier import classify_link
@@ -572,7 +573,7 @@ def test_evaluate_links_relaxes_floor_for_productive_host():
     assert len(state.frontier) == 4
 
 
-@pytest.mark.parametrize(("depth", "score"), [(0, 0.49), (4, 0.90)])
+@pytest.mark.parametrize(("depth", "score"), [(0, 0.49), (5, 0.90)])
 def test_evaluate_links_rejects_below_floor_or_beyond_depth(depth, score):
     state = CrawlState()
 
@@ -734,6 +735,29 @@ def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_pa
     capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
     assert len(capped) == 1
     assert capped[0]["should_enqueue"] == 1
+
+
+def test_evaluate_links_uses_higher_wikipedia_family_cap(tmp_path):
+    state = CrawlState()
+    links = [
+        (f"https://en.wikipedia.org/wiki/Tuebingen_{i}", "Tübingen")
+        for i in range(MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY + 2)
+    ]
+    with LinkStore(tmp_path / "pages.sqlite") as link_store:
+        evaluate_links(
+            state=state,
+            links=links,
+            current_url="https://host/",
+            depth=0,
+            parent_relevance=5.0,
+            parent_host="host",
+            host_counts={"en.wikipedia.org": 1},
+            max_pages_per_host=None,
+            link_critic=FakeLinkPredictor(0.60),
+            link_store=link_store,
+        )
+
+    assert len(state.frontier) == MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY
 
 
 def test_evaluate_links_caps_links_per_host(tmp_path):
@@ -960,7 +984,7 @@ def test_crawl_run_rejects_german_page_but_follows_its_links(
     pages = {"/": de_root, "/en": page("leaf en")}
 
     with make_client(pages, requested_paths) as client:
-        run_crawl(client, tmp_path, page_store)
+        run_crawl(client, tmp_path, page_store, max_pages_per_seed=1)
 
     assert "https://host/" not in stored_urls(page_store)
     assert "https://host/en" in stored_urls(page_store)

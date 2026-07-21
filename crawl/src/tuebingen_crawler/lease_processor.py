@@ -77,7 +77,7 @@ def process_claimed_lease(
             )
             if page_evaluation is None:
                 return
-            saved = True
+            saved = page_evaluation.saved
             _process_links(
                 context, frontier, lease, current_url, hostname, depth, page_evaluation
             )

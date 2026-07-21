@@ -5,7 +5,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 
-MAX_SAVED_PAGES_PER_HOST = 1000
+MAX_SAVED_PAGES_PER_HOST = 2000
 
 
 class Language(StrEnum):

@@ -2,7 +2,7 @@
 [[sites]]
 url = "https://en.wikipedia.org/wiki/T%C3%BCbingen"
 sitemap = true
-max_pages_per_seed = 600
+max_pages_per_seed = 1200
 request_delay = 0.4
 
 [[sites]]
@@ -15,6 +15,11 @@ request_delay = 0.4
 url = "https://leo-bw.de/en-GB/detail-gis/-/Detail/details/ORT/labw_ortslexikon/16171/T%C3%BCbingen"
 sitemap = true
 max_pages_per_seed = 100
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.citypopulation.de/en/germany/badenwurttemberg/t%C3%BCbingen/08416041__t%C3%BCbingen/"
+max_pages_per_seed = 50
 request_delay = 0.7
 
 [[sites]]
@@ -46,14 +51,29 @@ max_pages_per_seed = 150
 request_delay = 0.5
 
 [[sites]]
+url = "https://www.germany.travel/en/cities-culture/tuebingen.html"
+max_pages_per_seed = 150
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.visit-bw.com/en/article/old-town-of-tubingen/c82ceb67-f78d-4b4e-8911-3972ca794cbc"
+max_pages_per_seed = 150
+request_delay = 0.7
+
+[[sites]]
+url = "https://braugasthoefe.de/en/inn/fischers-neckarmueller-tuebinger-brewery/"
+max_pages_per_seed = 100
+request_delay = 0.7
+
+[[sites]]
 url = "https://www.unimuseum.uni-tuebingen.de/en/"
 sitemap = true
-max_pages_per_seed = 400
+max_pages_per_seed = 800
 request_delay = 0.5
 
 [[sites]]
 url = "https://en.wikivoyage.org/wiki/T%C3%BCbingen"
-max_pages_per_seed = 600
+max_pages_per_seed = 1000
 request_delay = 0.4
 
 [[sites]]
@@ -235,6 +255,11 @@ max_pages_per_seed = 240
 request_delay = 0.5
 
 [[sites]]
+url = "https://www.germansights.com/rivers/neckar.php"
+max_pages_per_seed = 240
+request_delay = 0.5
+
+[[sites]]
 url = "https://museu.ms/museum/details/17928"
 max_pages_per_seed = 240
 request_delay = 0.5
@@ -247,6 +272,11 @@ request_delay = 0.5
 [[sites]]
 url = "https://kunsthalle-tuebingen.de/en/"
 max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.stadtmuseum-tuebingen.de/english/"
+max_pages_per_seed = 400
 request_delay = 0.5
 
 [[sites]]
@@ -447,17 +477,17 @@ request_delay = 0.5
 
 [[sites]]
 url = "https://uni-tuebingen.de/en/"
-max_pages_per_seed = 1600
+max_pages_per_seed = 2000
 request_delay = 0.5
 
 [[sites]]
 url = "https://tuebingenresearchcampus.com/en/tuebingen/living-in-tuebingen"
-max_pages_per_seed = 600
+max_pages_per_seed = 1000
 request_delay = 0.5
 
 [[sites]]
 url = "https://www.my-stuwe.de/en/"
-max_pages_per_seed = 1000
+max_pages_per_seed = 1200
 request_delay = 0.5
 
 [[sites]]
@@ -532,24 +562,34 @@ request_delay = 0.5
 
 # Research & health
 [[sites]]
+url = "https://www.dzne.de/en/about-us/sites/tuebingen"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.bccn-tuebingen.de/"
+max_pages_per_seed = 300
+request_delay = 0.5
+
+[[sites]]
 url = "https://ellis.eu/"
 max_pages_per_seed = 150
 request_delay = 0.5
 
 [[sites]]
 url = "https://www.dzif.de/en/partner-sites/tubingen"
-max_pages_per_seed = 50
-max_discovered_per_seed = 100
+max_pages_per_seed = 300
+max_discovered_per_seed = 600
 request_delay = 0.7
 
 [[sites]]
 url = "https://kyb.tuebingen.mpg.de/en/"
-max_pages_per_seed = 200
+max_pages_per_seed = 500
 request_delay = 0.5
 
 [[sites]]
 url = "https://www.iwm-tuebingen.de/en/"
-max_pages_per_seed = 150
+max_pages_per_seed = 400
 request_delay = 0.5
 
 [[sites]]
@@ -559,12 +599,12 @@ request_delay = 0.5
 
 [[sites]]
 url = "https://cyber-valley.de/en"
-max_pages_per_seed = 400
+max_pages_per_seed = 800
 request_delay = 0.5
 
 [[sites]]
 url = "https://tuebingen.ai/"
-max_pages_per_seed = 300
+max_pages_per_seed = 800
 request_delay = 0.5
 
 [[sites]]
@@ -574,7 +614,7 @@ request_delay = 0.5
 
 [[sites]]
 url = "http://www.hih-tuebingen.de/en/"
-max_pages_per_seed = 160
+max_pages_per_seed = 400
 request_delay = 0.5
 
 [[sites]]
@@ -584,7 +624,17 @@ request_delay = 0.5
 
 [[sites]]
 url = "https://www.dai-tuebingen.de/en/"
-max_pages_per_seed = 100
+max_pages_per_seed = 300
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.tuebingen.mpg.de/en"
+max_pages_per_seed = 600
+request_delay = 0.5
+
+[[sites]]
+url = "https://www.kks-netzwerk.de/en/network/about-us/members/translate-to-english-tuebingen/"
+max_pages_per_seed = 200
 request_delay = 0.7
 
 [[sites]]
@@ -608,6 +658,11 @@ max_pages_per_seed = 240
 request_delay = 0.5
 
 # Weather & practical
+[[sites]]
+url = "https://www.bahnhof.de/en/tuebingen-hbf"
+max_pages_per_seed = 100
+request_delay = 0.7
+
 [[sites]]
 url = "https://www.aqi.in/weather/us/germany/baden-wurttemberg/tubingen"
 max_pages_per_seed = 240
@@ -720,4 +775,179 @@ request_delay = 0.7
 url = "https://tueboga.gardenexplorer.org/"
 max_pages_per_seed = 30
 max_discovered_per_seed = 50
+request_delay = 0.7
+
+# Live-validated discoveries from Tuebingen-Crawled
+[[sites]]
+url = "https://wirtschaftskoordination.de/en/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.neuroschool-tuebingen.de/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://ailawinstitute.de/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://institute-tue.ellis.eu/en/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.cmfi.uni-tuebingen.de/en/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.emuseum.uni-tuebingen.de/en/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://fit.uni-tuebingen.de/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://tuebingen-university-press.de/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://sit-sis.de/en/"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.ikmk.uni-tuebingen.de/?lang=en"
+max_pages_per_seed = 400
+max_discovered_per_seed = 800
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.waterhardness.net/deutschland/baden-wuerttemberg/72070-tuebingen/72072-suedstadt.html"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.bikemap.net/en/l/2820860/"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.shanghairanking.com/universities/university-of-tuebingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.academics.com/guide/working-in-tuebingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://globaltravelescapades.com/things-to-do-in-tubingen-germany"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.timeshighereducation.com/world-university-rankings/university-tubingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://weather-and-climate.com/average-monthly-Rainfall-Temperature-Sunshine,tubingen-baden-wurttemberg-de,Germany"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://en.climate-data.org/europe/germany/baden-wuerttemberg/tuebingen-22712/"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://peakvisor.com/adm/landkreis-tuebingen.html"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.bbc.com/travel/article/20220320-tbingen-europes-fiercely-vegan-fairy-tale-city"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://global.tufts.edu/content/tufts-tubingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://peeces.de/en/blogs/news/tubingen-vintage-store-guide"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://miz.org/en/musical-life/institutions/music-schools/tuebingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://keydocuments.net/place/tgn/7004426"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://www.amazon.jobs/en/locations/tubingen-germany"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://vostel.de/en/volunteering/projects/6785_Bahnhofsmission-Tuebingen_Be-a-contact-person-for-people-in-emergency-situations-at-the-trainstation_Tuebingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://en.actionbound.com/bounds/user/UB%20Tuebingen"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://one-million-places.com/en/germany/tuebingen-tips-top-sights"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
+request_delay = 0.7
+
+[[sites]]
+url = "https://db.cs.uni-tuebingen.de/"
+max_pages_per_seed = 100
+max_discovered_per_seed = 200
 request_delay = 0.7
