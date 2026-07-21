@@ -1,177 +1,229 @@
-%%% Based on the 2025 ICML template, available at https://icml.cc/Conferences/2025/AuthorInstructions %%%
-
 \documentclass{article}
-
-% Recommended, but optional, packages for figures and better typesetting:
 \usepackage{microtype}
-\usepackage{graphicx}
-\usepackage{booktabs} % for professional tables
+\usepackage{booktabs}
 \usepackage{xcolor}
-
-% Corporate Design of the University of Tübingen
-% Primary Colors
-\definecolor{TUred}{RGB}{165,30,55}
-\definecolor{TUgold}{RGB}{180,160,105}
-\definecolor{TUdark}{RGB}{50,65,75}
-\definecolor{TUgray}{RGB}{175,179,183}
-
-% Secondary Colors
-\definecolor{TUdarkblue}{RGB}{65,90,140}
-\definecolor{TUblue}{RGB}{0,105,170}
-\definecolor{TUlightblue}{RGB}{80,170,200}
-\definecolor{TUlightgreen}{RGB}{130,185,160}
-\definecolor{TUgreen}{RGB}{125,165,75}
-\definecolor{TUdarkgreen}{RGB}{50,110,30}
-\definecolor{TUocre}{RGB}{200,80,60}
-\definecolor{TUviolet}{RGB}{175,110,150}
-\definecolor{TUmauve}{RGB}{180,160,150}
-\definecolor{TUbeige}{RGB}{215,180,105}
-\definecolor{TUorange}{RGB}{210,150,0}
-\definecolor{TUbrown}{RGB}{145,105,70}
-
-
-% tighten figure spacing
-\setlength{\floatsep}{6pt}
-\setlength{\textfloatsep}{8pt}
-\setlength{\intextsep}{6pt}
-
-% tighten caption spacing
-\setlength{\abovecaptionskip}{4pt}
-\setlength{\belowcaptionskip}{0pt}
-
-
-% hyperref makes hyperlinks in the resulting PDF.
-% If your build breaks (sometimes temporarily if a hyperlink spans a page)
-% please comment out the following usepackage line and replace
-% \usepackage{icml2023} with \usepackage[nohyperref]{icml2023} above.
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit}
 \usepackage{hyperref}
-
-
-% Attempt to make hyperref and algorithmic work together better:
 \newcommand{\theHalgorithm}{\arabic{algorithm}}
-
-
 \usepackage[accepted]{icml2025}
 
-% The \icmltitle you define below is probably too long as a header.
-% Therefore, a short form for the running title is supplied here:
-\icmltitlerunning{Tübingen Search Engine Report}
+\definecolor{TUred}{RGB}{165,30,55}
+\definecolor{TUdark}{RGB}{50,65,75}
+\definecolor{TUblue}{RGB}{0,105,170}
+\definecolor{TUgold}{RGB}{180,160,105}
+\definecolor{TUgreen}{RGB}{125,165,75}
+\setlength{\floatsep}{6pt}
+\setlength{\textfloatsep}{7pt}
+\setlength{\intextsep}{5pt}
+\setlength{\abovecaptionskip}{3pt}
+\setlength{\belowcaptionskip}{0pt}
+\icmltitlerunning{A Focused Search Engine for Tübingen}
 
 \begin{document}
-
 \twocolumn[
-\icmltitle{TODO: Project Title}
-
-\icmlsetsymbol{equal}{*}
-
+\icmltitle{A Focused Search Engine for English Tübingen Content}
 \begin{icmlauthorlist}
-\icmlauthor{TODO Name}{equal,first}
-\icmlauthor{TODO Name}{equal,second}
-\icmlauthor{TODO Name}{equal,third}
-\icmlauthor{TODO Name}{equal,fourth}
+\icmlauthor{TODO: authors}{equal}
 \end{icmlauthorlist}
-
-% fill in your matrikelnummer, email address, degree, for each group member
-\icmlaffiliation{first}{Matrikelnummer TODO, TODO Degree}
-\icmlaffiliation{second}{Matrikelnummer TODO, TODO Degree}
-\icmlaffiliation{third}{Matrikelnummer TODO, TODO Degree}
-\icmlaffiliation{fourth}{Matrikelnummer TODO, TODO Degree}
-
-% put your email addresses here. You can use initials to save space,
-% DO USE YOUR UNIVERSITY EMAIL ADDRESS!
-\icmlcorrespondingauthor{TODO}{todo@student.uni-tuebingen.de}
-
-% You may provide any keywords that you
-% find helpful for describing your paper; these are used to populate
-% the "keywords" metadata in the PDF but will not be shown in the document
-\icmlkeywords{Information Retrieval, Search Engines, Modern Search Engines}
-
-\vskip 0.3in
+\icmlaffiliation{equal}{TODO: student IDs, degree programmes, and university email addresses}
+\icmlkeywords{focused crawling, BM25F, hybrid retrieval, search interface}
+\vskip 0.2in
 ]
 
 \begin{abstract}
-TODO: One paragraph summarizing the problem (search English, Tübingen-related
-content), your approach (crawler, first-stage retrieval, second-stage
-re-ranking, UI innovation), and your headline evaluation result. \footnote{Source
-files are publicly available in the \href{https://github.com/julilili42/search-engine}{\textcolor{TUred}{project repository}}.}
+We built an end-to-end search engine for English web pages about Tübingen.
+It combines a focused, resumable crawler with a field-weighted lexical index,
+term-proximity scoring, passage-level semantic re-ranking, and an interactive
+constellation interface. A controlled 15-query experiment improved
+$\mathrm{nDCG}@10$ from 0.599 to 0.655. The current 20-query system reaches
+$\mathrm{nDCG}@10=0.688$ at 34.9\,ms mean measured retrieval latency. These
+results are promising, but the judgments were pooled from system outputs and
+were not assessed independently.
 \end{abstract}
 
-
-\section{Introduction}\label{sec:intro}
-
-TODO: Motivate the task (building a focused search engine for English,
-Tübingen-related web content), state what makes it hard, and preview your
-contributions across the four graded components (crawling/indexing, query
-processing, result presentation, evaluation).
-
-\section{Web Crawling and Indexing}\label{sec:crawling}
-
-TODO: Describe the crawler (seed set, frontier strategy, politeness/robots.txt
-handling, resumability), the page/link filtering approach, deduplication, and
-what is stored in the local index. Justify design choices against alternatives
-you considered.
-
-\section{Query Processing}\label{sec:retrieval}
-
-TODO: Describe the self-implemented classical first-stage retrieval model
-(e.g. BM25/BM25F) and the retrieval-model innovation required beyond
-BM25/TF-IDF (e.g. proximity scoring, pseudo-relevance feedback,
-embedding-based second-stage re-ranking). Justify why each signal was chosen
-and how first- and second-stage are combined.
-
-\subsection*{Batch Query Format}
-TODO: Note support for the required tab-separated batch query input
-(\texttt{query\_id<TAB>query text}) and batch result output
-(\texttt{query\_id<TAB>rank<TAB>url<TAB>score}).
-
-\section{Search Result Presentation}\label{sec:ui}
-
-TODO: Describe the interactive UI and the specific innovation that goes
-beyond a plain ranked list (e.g. facets, explanations, snippet highlighting).
-Include screenshots (required by the grading rubric).
+\section{Scope and Architecture}
+The system targets English pages that are relevant to Tübingen. It owns the
+complete path from URL discovery to presentation. Figure~\ref{fig:architecture}
+shows the deployed data flow. Components exchange files and SQLite records;
+the query service loads the index once at startup. This keeps crawling,
+offline indexing, and online retrieval independently runnable.
 
 \begin{figure}[t]
-    \centering
-    \caption{TODO: Screenshot of the search UI.}
-    %\includegraphics[width=\columnwidth]{img/ui_screenshot.png}
-    \label{fig:ui}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=3.5mm and 4.5mm,
+  box/.style={draw=TUdark,rounded corners,fill=TUblue!7,minimum height=6mm,
+    align=center,font=\scriptsize,inner xsep=4pt},
+  arr/.style={-{Latex[length=2mm]},semithick,TUdark}]
+\node[box] (seed) {Seeds};
+\node[box,right=of seed] (crawl) {Focused\\crawler};
+\node[box,right=of crawl] (store) {HTML +\\SQLite};
+\node[box,right=of store] (index) {BM25F index +\\passage vectors};
+\node[box,below=of index] (api) {FastAPI\\query service};
+\node[box,left=of api] (ui) {React/Three.js\\interface};
+\draw[arr] (seed)--(crawl);
+\draw[arr] (crawl)--(store);
+\draw[arr] (store)--(index);
+\draw[arr] (index)--(api);
+\draw[arr] (api)--(ui);
+\end{tikzpicture}}
+\caption{Implemented architecture. Offline stages are on top; online stages
+are below.}
+\label{fig:architecture}
 \end{figure}
 
-\section{Evaluation}\label{sec:evaluation}
+\section{Focused Crawling}
+One global priority frontier schedules URLs across hosts. It admits at most
+one concurrent request per host and applies configurable request delays.
+Before fetching, the crawler evaluates \texttt{robots.txt}; the Robots
+Exclusion Protocol defines publisher rules for automated clients
+\cite{koster2022robots}. HTTP 429 and server errors trigger bounded retries.
+Frontier and deduplication state are persisted, so interrupted crawls resume.
 
-TODO: Describe your qrels/benchmark setup, the metrics used (nDCG@10,
-nDCG@20, MRR@10, ...), and report results comparing your baseline against
-each ranking improvement. Reference the known evaluation queries
-("t\"ubingen attractions", "food and drinks") and note expected live-query
-behavior/runtime (target $\leq$~1 min/query).
+Two local classifiers focus the crawl. \emph{LinkVerdict} scores candidate
+links from their anchor, target, parent, depth, and parent verdict.
+\emph{PageVerdict} scores fetched content and admits only English pages above
+a fixed threshold. Per-page, host, URL-family, depth, and rejection budgets
+limit traps and concentration. A small exploration lane admits up to three
+lower-confidence links per page from previously unproductive hosts.
+
+Canonical URLs prevent exact revisits. A text SimHash removes near-duplicate
+pages; SimHash is established for large-scale web near-duplicate detection
+\cite{manku2007simhash}. HTML is stored on disk, while page, link, decision,
+and model metadata are stored in SQLite. The archived 20 July crawl fetched
+8,290 pages from 231 hosts, saved 3,475 (41.9\%), and rejected 823 duplicates
+(9.9\% of fetches). These are descriptive crawl statistics, not relevance
+precision estimates.
+
+\section{Indexing and Retrieval}
+The tokenizer lowercases alphanumeric English tokens, removes one-character
+tokens, and filters English stopwords while retaining negations. The inverted
+index stores postings and body positions. Ranking starts with BM25F over body,
+title, and URL-path fields, weighted 1, 5, and 3. BM25F extends BM25 to
+weighted document fields with field-length normalization
+\cite{robertson2004bm25f}. A maximum-window bonus of
+$0.25/(1+\mathrm{gap})$ rewards documents in which all matched query terms
+occur close together. Combining proximity evidence with Okapi-style scoring
+has prior support \cite{rasolofo2003proximity}.
+
+Semantic retrieval uses \texttt{nli-mpnet-base-v2}. Sentence-BERT-style
+models encode text into vectors suitable for cosine comparison
+\cite{reimers2019sentencebert}. Documents are split into overlapping passages;
+the best passage score represents each document. The candidate union contains
+the top 100 lexical and top 100 semantic results. Final scores are
+$0.85\,s_{lex}+0.15\,s_{sem}$, where the lexical score is min--max normalized.
+Convex score fusion is simple, tunable with one parameter, and has outperformed
+reciprocal-rank fusion in published hybrid-retrieval experiments
+\cite{bruch2023fusion}. Missing or stale vectors safely fall back to lexical
+ranking. The CLI also reads and writes the required tab-separated batch format.
+
+\section{Result Presentation}
+The FastAPI service exposes search and health endpoints. The React client
+offers both a conventional ranked list and an interactive 3-D constellation.
+Each result is a clickable star. Size and brightness encode normalized
+relevance. Two fixed semantic axes---``university, research and
+administration'' and ``tourism, culture and everyday life''---set the spatial
+coordinates. Nearby stars expand on hover; ten results form one paged cluster.
+This view exposes topical structure without changing the ranking.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.72cm,y=0.48cm,font=\scriptsize]
+  \fill[TUdark] (0,0) rectangle (8,4.6);
+  \draw[white!35] (4,0.5)--(4,4.0) (0.6,2.25)--(7.5,2.25);
+  \node[white!70,anchor=south] at (4,4.0) {tourism / everyday life};
+  \node[white!70,anchor=north] at (4,0.5) {research / administration};
+  \foreach \x/\y/\r/\c in {1.4/3.2/2.2/TUgold,2.6/2.8/1.5/white,
+    5.8/3.4/2.5/TUgold,6.7/1.5/1.8/white,4.8/1.1/1.3/TUblue,
+    3.6/2.0/1.0/white} \fill[\c] (\x,\y) circle (\r pt);
+  \node[white,anchor=west] at (0.5,4.3) {Search Tübingen\ldots};
+\end{tikzpicture}
+\caption{Placeholder for the final UI screenshot. Replace this schematic
+before submission.}
+\label{fig:ui}
+\end{figure}
+
+\section{Evaluation}
+We use graded relevance judgments (0--3) and report nDCG, reciprocal rank,
+positive results, judged coverage, and latency. nDCG discounts relevant items
+at lower ranks and supports graded judgments \cite{jarvelin2002ndcg}.
+The controlled ablation in Table~\ref{tab:results} uses the same crawl and 15
+queries. Stopword filtering produced the largest gain; proximity added another
+0.012 nDCG@10. Mean lexical latency remained below 2\,ms.
 
 \begin{table}[t]
 \centering
-\caption{TODO: Retrieval effectiveness by system variant.}
+\caption{Controlled retrieval ablation (15 queries, one crawl snapshot).}
 \label{tab:results}
-\begin{tabular}{@{}lcc@{}}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Variant} & \textbf{nDCG@10} & \textbf{MRR@10} \\
+Variant & nDCG@10 & nDCG@20 & MRR@10 & Pos.@10\\
 \midrule
-BM25 baseline & TODO & TODO \\
-+ TODO signal & TODO & TODO \\
-+ TODO signal & TODO & TODO \\
+BM25 baseline & .599 & .764 & .967 & 7.0\\
++ stopwords & .643 & .775 & 1.000 & 7.4\\
++ proximity & \textbf{.655} & .772 & 1.000 & \textbf{7.6}\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\section{Conclusion}\label{sec:conclusion}
+The current 20-query run reports nDCG@10 0.688, nDCG@20 0.694, MRR@10
+0.900, 8.25 positives@10, and 34.9\,ms mean latency. It cannot be compared
+directly with Table~\ref{tab:results}: both the crawl and judgment pool differ.
+Moreover, judgments were created from the evaluated runs, which explains very
+high judged coverage and risks pooling bias. No significance test or external
+assessor study is available.
 
-TODO: Summarize what worked, what didn't, and known limitations.
+\section{Decisions, Limits, and Next Evidence}
+The design favors transparent first-stage retrieval and confines learned
+signals to crawl filtering and second-stage re-ranking. Offline embeddings
+bound online work; lexical fallback preserves availability. The constellation
+adds exploration while retaining a ranked list for direct navigation.
 
-\section*{Contribution Statement}
-TODO: State who was responsible for which components.
-\printAffiliationsAndNotice{\icmlEqualContribution}
+\textbf{TODO before submission:} add author and contribution details; replace
+Figure~\ref{fig:ui} with a real screenshot; document classifier training data,
+held-out metrics, and release identifiers; evaluate lexical versus hybrid
+ranking on one frozen crawl with independent judgments and confidence
+intervals; report index size, embedding build time, and end-to-end API latency.
 
-\bibliography{bibliography}
-\bibliographystyle{icml2025}
+\section{Conclusion}
+The project implements a complete focused search engine with measurable
+retrieval improvements. On a controlled snapshot, stopword filtering and
+proximity improved nDCG@10 by 0.056 over the baseline. The current hybrid
+system is operational, but its incremental value remains unproven until a
+frozen, independently judged ablation is run.
 
+\clearpage
+\begin{thebibliography}{7}
+\bibitem[Robertson et~al.(2004)]{robertson2004bm25f}
+S. Robertson, H. Zaragoza, and M. Taylor. Simple BM25 extension to multiple
+weighted fields. In \emph{CIKM}, 2004.
+
+\bibitem[Rasolofo and Savoy(2003)]{rasolofo2003proximity}
+Y. Rasolofo and J. Savoy. Term proximity scoring for keyword-based retrieval
+systems. In \emph{ECIR}, 2003.
+
+\bibitem[Manku et~al.(2007)]{manku2007simhash}
+G. Manku, A. Jain, and A. Das Sarma. Detecting near-duplicates for web
+crawling. In \emph{WWW}, 2007.
+
+\bibitem[Koster et~al.(2022)]{koster2022robots}
+M. Koster, G. Illyes, H. Zeller, and L. Sassman. Robots Exclusion Protocol.
+RFC 9309, 2022. \url{https://www.rfc-editor.org/rfc/rfc9309}
+
+\bibitem[Reimers and Gurevych(2019)]{reimers2019sentencebert}
+N. Reimers and I. Gurevych. Sentence-BERT: Sentence embeddings using Siamese
+BERT-networks. In \emph{EMNLP-IJCNLP}, 2019.
+
+\bibitem[Bruch et~al.(2023)]{bruch2023fusion}
+S. Bruch, S. Gai, and A. Ingber. An analysis of fusion functions for hybrid
+retrieval. \emph{ACM Transactions on Information Systems}, 2023.
+
+\bibitem[J\"arvelin and Kek\"al\"ainen(2002)]{jarvelin2002ndcg}
+K. J\"arvelin and J. Kek\"al\"ainen. Cumulated gain-based evaluation of IR
+techniques. \emph{ACM Transactions on Information Systems}, 2002.
+\end{thebibliography}
 \end{document}
-
-% This document was modified from the files available at https://icml.cc/Conferences/2025/AuthorInstructions
-% the full copyright notice is available within the file icml2025.sty
