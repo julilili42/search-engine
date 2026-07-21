@@ -16,12 +16,24 @@ const MIN_WARP_MS = 1750
 const RESULTS_FETCH_COUNT = PAGE_SIZE * 3
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function displayHost(result: SearchResult) {
+function displayUrl(result: SearchResult) {
   if (!result.url) return "local file"
   try {
-    return new URL(result.url).hostname.replace(/^www\./, "")
+    const url = new URL(result.url)
+    return `${url.hostname.replace(/^www\./, "")}${url.pathname === "/" ? "" : url.pathname}`
   } catch {
     return result.url
+  }
+}
+
+function displayTitle(result: SearchResult) {
+  if (result.title) return result.title
+  if (!result.url) return result.path.split("/").pop() || "Search result"
+  try {
+    const slug = new URL(result.url).pathname.split("/").filter(Boolean).pop()
+    return slug ? decodeURIComponent(slug).replace(/[-_]+/g, " ") : displayUrl(result)
+  } catch {
+    return displayUrl(result)
   }
 }
 
@@ -193,7 +205,7 @@ function App() {
       </main>
 
       <aside
-        className={`absolute top-0 left-0 z-10 flex h-full w-[30rem] flex-col gap-2 overflow-hidden border-r border-white/10 bg-black/15 p-5 pt-24 transition-transform duration-500 ease-out ${
+        className={`absolute top-0 left-0 z-10 flex h-full w-[30rem] flex-col gap-2 overflow-hidden border-r border-white/10 bg-black/15 p-5 pt-20 transition-transform duration-500 ease-out ${
           panelOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -204,7 +216,7 @@ function App() {
           </div>
         )}
 
-        <div className="flex-1 space-y-2 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {searched && !loading && !error && results.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/50">
               <SearchX className="size-7" />
@@ -212,27 +224,31 @@ function App() {
             </div>
           )}
 
-          {showList &&
-            pagedResults.map((result) => (
+          {showList && (
+            <div className="grid h-full grid-rows-[repeat(10,minmax(0,1fr))] gap-2">
+              {pagedResults.map((result) => (
               <a
                 key={`${result.rank}-${result.path}`}
                 href={result.url ?? undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="group block rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
+                className="group flex min-h-0 flex-col justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
-                    <span className="text-white/40">{result.rank}.</span>
-                    {displayHost(result)}
-                  </span>
-                  <ExternalLink className="size-3 shrink-0 text-white/40" />
+                <div className="flex items-center gap-1.5 truncate text-[11px] text-white/45">
+                  <span className="text-white/35">{result.rank}.</span>
+                  {displayUrl(result)}
+                  <ExternalLink className="size-3 shrink-0 text-white/30" />
                 </div>
-                <p className="mt-0.5 line-clamp-1 text-xs text-white/50 group-hover:line-clamp-2">
+                <h2 className="truncate text-sm font-medium text-white/90 group-hover:text-white group-hover:underline">
+                  {displayTitle(result)}
+                </h2>
+                <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-white/55">
                   {result.snippet}
                 </p>
               </a>
-            ))}
+              ))}
+            </div>
+          )}
         </div>
       </aside>
 

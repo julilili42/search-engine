@@ -138,6 +138,14 @@ def test_generate_snippet_centers_on_tightest_window():
     assert snippet == "... x alpha beta ..."
 
 
+def test_generate_snippet_prefers_repeated_match_after_navigation():
+    terms = ["query", "navigation"] + ["x"] * 28 + ["article", "query", "answer"]
+
+    snippet = _generate_snippet(terms, {"query": [0, 31]}, context_size=1)
+
+    assert snippet == "... article query answer"
+
+
 def test_search_does_not_read_the_source_file(tmp_path):
     # the snippet is built from terms stored in the index, so the source file
     # never has to exist at query time

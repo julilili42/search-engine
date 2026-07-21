@@ -4,6 +4,7 @@ export type SearchResult = {
   path: string
   url: string | null
   snippet: string
+  title: string | null
   embedding_score: number | null
   embedding_x: number | null
   embedding_y: number | null

@@ -34,6 +34,7 @@ def test_search_returns_ranked_results(client):
     results = response.json()
     assert [r["rank"] for r in results] == [1, 2]
     assert results[0]["path"].endswith("banana.html")
+    assert results[0]["title"] == "banana"
     assert results[0]["score"] > results[1]["score"]
 
 

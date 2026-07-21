@@ -149,6 +149,7 @@ def search_index(
                 path=path,
                 url=url,
                 snippet=snippet,
+                title=document.title,
                 embedding_score=embedding_scores.get(doc_index),
                 embedding_x=xy[0] if xy else None,
                 embedding_y=xy[1] if xy else None,
@@ -291,11 +292,21 @@ def _generate_snippet(
     term_positions: TermPosition,
     context_size: int,
 ) -> str:
-    window = _best_window(term_positions)
+    # Prefer a repeated match in the article body over title/navigation text.
+    later_positions = {
+        term: [position for position in positions if position >= 30]
+        for term, positions in term_positions.items()
+    }
+    snippet_positions = (
+        later_positions
+        if later_positions and all(later_positions.values())
+        else term_positions
+    )
+    window = _best_window(snippet_positions)
     if window is not None:
         position = (window[0] + window[1]) // 2
     else:
-        positions = [p for ps in term_positions.values() for p in ps]
+        positions = [p for ps in snippet_positions.values() for p in ps]
         if not positions:
             return " ".join(terms[: 2 * context_size + 1])
         position = min(positions)
