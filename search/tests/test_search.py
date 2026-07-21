@@ -333,6 +333,24 @@ def test_best_passage_score_uses_maximum_similarity():
     assert np.allclose(scores, [1.0, 0.8])
 
 
+def test_semantic_score_combines_title_best_and_top_passages():
+    import numpy as np
+
+    from tuebingen_search.embeddings import PassageEmbeddings
+    from tuebingen_search.search import _semantic_scores
+
+    embeddings = PassageEmbeddings._from_doc_ids(
+        np.array([[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]], dtype=np.float32),
+        np.array([0, 0, 1]),
+        document_count=2,
+        title_vectors=np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float32),
+    )
+
+    scores = _semantic_scores(embeddings, np.array([0.0, 1.0]))
+
+    assert np.allclose(scores, [0.925, 0.64])
+
+
 def test_hybrid_search_retrieves_semantic_only_document(tmp_path, monkeypatch):
     import numpy as np
 

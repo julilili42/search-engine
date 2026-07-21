@@ -29,6 +29,9 @@ RERANK_CANDIDATES = 100
 SEMANTIC_CANDIDATES = 100
 # BERT supplements BM25 but should not dominate it.
 ALPHA = 0.7
+TITLE_SIMILARITY_WEIGHT = 0.20
+BEST_PASSAGE_WEIGHT = 0.65
+TOP_PASSAGES_MEAN_WEIGHT = 0.15
 
 
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
@@ -88,7 +91,7 @@ def search_index(
         else:
             document_embeddings = passage_embeddings.mean_document_vectors()
             query_embedding = embed_texts([query])[0]
-            semantic_scores = _best_passage_scores(passage_embeddings, query_embedding)
+            semantic_scores = _semantic_scores(passage_embeddings, query_embedding)
             lexical = heapq.nlargest(
                 max(top_n, RERANK_CANDIDATES),
                 scores.items(),
@@ -179,6 +182,28 @@ def _best_passage_scores(
     return scores
 
 
+def _semantic_scores(
+    passage_embeddings: PassageEmbeddings,
+    query_embedding: np.ndarray,
+) -> np.ndarray:
+    if passage_embeddings.title_vectors is None:
+        return _best_passage_scores(passage_embeddings, query_embedding)
+
+    passage_scores = passage_embeddings.vectors @ query_embedding
+    title_scores = passage_embeddings.title_vectors @ query_embedding
+    scores = np.zeros(len(passage_embeddings.doc_slices), dtype=np.float32)
+    for doc_index, passage_slice in enumerate(passage_embeddings.doc_slices):
+        document_scores = passage_scores[passage_slice]
+        if len(document_scores):
+            top = np.sort(document_scores)[-3:]
+            scores[doc_index] = (
+                TITLE_SIMILARITY_WEIGHT * title_scores[doc_index]
+                + BEST_PASSAGE_WEIGHT * top[-1]
+                + TOP_PASSAGES_MEAN_WEIGHT * top.mean()
+            )
+    return scores
+
+
 def _rerank(
     candidates: list[ScoredDocument],
     doc_embeddings: PassageEmbeddings | np.ndarray,
@@ -194,7 +219,9 @@ def _rerank(
     spread = lexical.max() - lexical.min()
     lexical_norm = (lexical - lexical.min()) / spread if spread > 0 else np.zeros_like(lexical)
     if semantic_scores is None:
-        semantic_scores = _best_passage_scores(doc_embeddings, query_embedding)
+        semantic_scores = _semantic_scores(
+            _as_passage_embeddings(doc_embeddings), query_embedding
+        )
     cosine = semantic_scores[doc_indices]
 
     blended = alpha * lexical_norm + (1 - alpha) * cosine

@@ -30,6 +30,7 @@ MAX_PASSAGES_PER_DOC = 20
 class PassageEmbeddings:
     vectors: np.ndarray
     doc_slices: list[slice]
+    title_vectors: np.ndarray | None = None
 
     @classmethod
     def _from_doc_ids(
@@ -37,6 +38,7 @@ class PassageEmbeddings:
         vectors: np.ndarray,
         doc_ids: np.ndarray,
         document_count: int,
+        title_vectors: np.ndarray | None = None,
     ) -> PassageEmbeddings:
         vectors = np.asarray(vectors, dtype=np.float32)
         doc_ids = np.asarray(doc_ids)
@@ -58,7 +60,11 @@ class PassageEmbeddings:
             slice(int(boundaries[i]), int(boundaries[i + 1]))
             for i in range(document_count)
         ]
-        return cls(vectors=vectors, doc_slices=doc_slices)
+        if title_vectors is not None:
+            title_vectors = np.asarray(title_vectors, dtype=np.float32)
+            if title_vectors.shape != (document_count, vectors.shape[1]):
+                raise ValueError('title_vectors must contain one vector per document.')
+        return cls(vectors=vectors, doc_slices=doc_slices, title_vectors=title_vectors)
 
     @classmethod
     def _from_document_vectors(cls, vectors: np.ndarray) -> PassageEmbeddings:
@@ -93,12 +99,17 @@ def build_embeddings(index_path: Path, out_path: Path) -> None:
         vectors = embed_texts(passages)
     else:
         vectors = np.empty((0, 0), dtype=np.float32)
+    title_vectors = embed_texts([document.title or '' for document in index.documents])
+    for doc_index, document in enumerate(index.documents):
+        if not document.title:
+            title_vectors[doc_index] = 0
 
     # Paths reject stale indexes; doc_ids restore each passage's document.
     paths = np.array([str(document.path) for document in index.documents])
     np.savez(
         out_path,
         vectors=np.asarray(vectors, dtype=np.float32),
+        title_vectors=np.asarray(title_vectors, dtype=np.float32),
         doc_ids=np.asarray(doc_ids, dtype=np.int64),
         paths=paths,
         model=MODEL_NAME,
@@ -132,7 +143,12 @@ def load_embeddings(path: Path, documents: list[Document]) -> PassageEmbeddings 
                 if len(vectors) != len(documents):
                     raise ValueError('legacy files need one vector per document')
                 doc_ids = np.arange(len(vectors))
-            return PassageEmbeddings._from_doc_ids(vectors, doc_ids, len(documents))
+            return PassageEmbeddings._from_doc_ids(
+                vectors,
+                doc_ids,
+                len(documents),
+                title_vectors=data['title_vectors'] if 'title_vectors' in data.files else None,
+            )
         except ValueError as error:
             logger.warning(
                 'Embeddings at %s are invalid (%s), falling back to BM25 only. '

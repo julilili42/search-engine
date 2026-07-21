@@ -70,6 +70,25 @@ def test_load_embeddings_returns_matching_passages(tmp_path):
     assert np.allclose(loaded.mean_document_vectors(), [vectors[:2].mean(axis=0), vectors[2]])
 
 
+def test_load_embeddings_returns_title_vectors(tmp_path):
+    out_path = tmp_path / "embeddings.npz"
+    documents = [make_document("/a.html"), make_document("/b.html")]
+    title_vectors = np.eye(2, dtype=np.float32)
+    np.savez(
+        out_path,
+        vectors=np.eye(2, dtype=np.float32),
+        doc_ids=np.array([0, 1]),
+        title_vectors=title_vectors,
+        paths=np.array([str(document.path) for document in documents]),
+        model=MODEL_NAME,
+    )
+
+    loaded = load_embeddings(out_path, documents)
+
+    assert loaded is not None
+    assert np.array_equal(loaded.title_vectors, title_vectors)
+
+
 def test_load_embeddings_adapts_legacy_document_vectors(tmp_path):
     out_path = tmp_path / "embeddings.npz"
     vectors = np.eye(2, dtype=np.float32)
