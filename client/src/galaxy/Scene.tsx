@@ -115,9 +115,11 @@ type SceneProps = {
   page: number
   totalPages: number
   onPageDelta: (delta: number) => void
+  hasCategoryX: boolean
+  hasCategoryY: boolean
 }
 
-function Scene({ phase, results, page, totalPages, onPageDelta }: SceneProps) {
+function Scene({ phase, results, page, totalPages, onPageDelta, hasCategoryX, hasCategoryY }: SceneProps) {
   // settled/lookAt/dragOffset all live here (not inside CameraRig) for two
   // reasons: this is where the DOM pointer props naturally attach to the
   // Canvas element (dragging works from anywhere over the scene, including
@@ -196,7 +198,14 @@ function Scene({ phase, results, page, totalPages, onPageDelta }: SceneProps) {
       <Stars radius={50} depth={30} count={3800} factor={1.4} saturation={0} fade speed={0.25} />
       <GalaxyField visible={phase !== "results"} warpSpeed={phase === "warping" ? 6 : 1} />
       <WarpTunnel active={phase === "warping"} />
-      {results.length > 0 && <ResultStars results={results} revealed={phase === "results"} />}
+      {results.length > 0 && (
+        <ResultStars
+          results={results}
+          revealed={phase === "results"}
+          hasCategoryX={hasCategoryX}
+          hasCategoryY={hasCategoryY}
+        />
+      )}
       <BloomEffect />
     </Canvas>
   )

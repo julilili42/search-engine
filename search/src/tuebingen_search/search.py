@@ -37,17 +37,7 @@ TOP_PASSAGES_MEAN_WEIGHT = 0.15
 def search(index_path: Path, query: str, top_n: int, context_size: int = 20) -> list[SearchResult]:
     index = load_index(index_path)
     doc_embeddings = load_embeddings(DEFAULT_EMBEDDINGS_PATH, index.documents)
-    category_axes = (
-        embed_texts([CATEGORY_X_LABEL, CATEGORY_Y_LABEL])
-        if doc_embeddings is not None
-        else None
-    )
-    return search_index(index, query, top_n, context_size, doc_embeddings, category_axes)
-
-# fixed category axes the result "constellation" is placed on: how strongly a
-# result matches each label becomes its x/y coordinate in the universe view
-CATEGORY_X_LABEL = "university, research and administration"
-CATEGORY_Y_LABEL = "tourism, culture and everyday life"
+    return search_index(index, query, top_n, context_size, doc_embeddings)
 
 
 def search_index(
@@ -56,7 +46,7 @@ def search_index(
     top_n: int,
     context_size: int = 20,
     doc_embeddings: PassageEmbeddings | np.ndarray | None = None,
-    category_axes: np.ndarray | None = None,
+    category_axes: tuple[np.ndarray | None, np.ndarray | None] | np.ndarray | None = None,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -122,10 +112,7 @@ def search_index(
     else:
         ranked_results = heapq.nlargest(top_n, scores.items(), key=lambda item: item[1])
 
-    # place each result on fixed category axes (how strongly it matches
-    # CATEGORY_X_LABEL / CATEGORY_Y_LABEL) so the constellation reflects
-    # meaningful topics instead of an arbitrary rank spiral
-    embedding_coords: dict[int, tuple[float, float]] = {}
+    embedding_coords: dict[int, tuple[float | None, float | None]] = {}
     if document_embeddings is not None and category_axes is not None and ranked_results:
         doc_indices = [doc_index for doc_index, _ in ranked_results]
         coords = project_onto_categories(
@@ -231,9 +218,9 @@ def _rerank(
 
 
 def project_onto_categories(
-    vectors: np.ndarray, x_axis: np.ndarray, y_axis: np.ndarray
-) -> list[tuple[float, float]]:
-    """Place each vector by how strongly it matches two named category embeddings."""
+    vectors: np.ndarray, x_axis: np.ndarray | None, y_axis: np.ndarray | None
+) -> list[tuple[float | None, float | None]]:
+    """Place each vector by how strongly it matches the supplied category embeddings."""
     if len(vectors) == 0:
         return []
 
@@ -244,9 +231,12 @@ def project_onto_categories(
         # linearly compressing every near-duplicate result onto the same point
         return np.tanh(centered / (2 * std))
 
-    xs = center_and_scale(vectors @ x_axis)
-    ys = center_and_scale(vectors @ y_axis)
-    return list(zip((float(x) for x in xs), (float(y) for y in ys)))
+    xs = center_and_scale(vectors @ x_axis) if x_axis is not None else [None] * len(vectors)
+    ys = center_and_scale(vectors @ y_axis) if y_axis is not None else [None] * len(vectors)
+    return [
+        (float(x) if x is not None else None, float(y) if y is not None else None)
+        for x, y in zip(xs, ys)
+    ]
 
 
 def _best_window(term_positions: TermPosition) -> tuple[int, int] | None:

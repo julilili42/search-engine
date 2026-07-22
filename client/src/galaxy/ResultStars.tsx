@@ -8,13 +8,13 @@ import type { SearchResult } from "@/types"
 type ResultStarsProps = {
   results: SearchResult[]
   revealed: boolean
+  hasCategoryX: boolean
+  hasCategoryY: boolean
 }
 
-const MIN_ORBIT = 3
-const MAX_ORBIT = 9
 const AXIS_SPREAD = 7
-// golden angle: spreads points around the center without overlapping spokes,
-// used as a fallback when embedding coordinates aren't available
+const RANK_X_SPREAD = 4
+const RANK_SPREAD = 6
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 // distance below which two stars are considered visually overlapping and
 // therefore clustered together (kept separate from HOVER_RADIUS below — see
@@ -46,7 +46,7 @@ export const PAGE_SIZE = 10
 export const PAGE_SPACING = 24
 
 function relevanceOf(result: SearchResult) {
-  return result.embedding_score ?? result.score
+  return result.score
 }
 
 function normalize(values: number[]) {
@@ -100,30 +100,24 @@ function screenDistance(a: [number, number, number], b: [number, number, number]
   return Math.hypot(a[0] - b[0], a[1] - b[1])
 }
 
-function layoutStars(results: SearchResult[]) {
+function layoutStars(results: SearchResult[], hasCategoryX: boolean, hasCategoryY: boolean) {
   const toUnit = normalize(results.map(relevanceOf))
-  const hasEmbeddingCoords = results.every(
-    (r) => Number.isFinite(r.embedding_x) && Number.isFinite(r.embedding_y),
-  )
 
   const placed = results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))
     const pageX = Math.floor(index / PAGE_SIZE) * PAGE_SPACING
     const pageLocalIndex = index % PAGE_SIZE
-
-    // the constellation shape is the two named category axes (embedding_x/y);
-    // relevance only drives size/brightness, not placement, so the axes stay legible
-    let x: number
-    let y: number
-    if (hasEmbeddingCoords) {
-      x = pageX + result.embedding_x! * AXIS_SPREAD
-      y = result.embedding_y! * AXIS_SPREAD
-    } else {
-      const angle = pageLocalIndex * GOLDEN_ANGLE
-      const orbit = MIN_ORBIT + (1 - unit) * (MAX_ORBIT - MIN_ORBIT)
-      x = pageX + Math.cos(angle) * orbit
-      y = Math.sin(angle) * orbit
-    }
+    const rankY = PAGE_SIZE > 1 ? 1 - (2 * pageLocalIndex) / (PAGE_SIZE - 1) : 0
+    // Without a category, the ranking itself defines the map: high ranks sit
+    // at the top and deterministic X offsets keep them visibly separate.
+    const x = pageX + (
+      hasCategoryX && Number.isFinite(result.embedding_x)
+        ? result.embedding_x! * AXIS_SPREAD
+        : seeded(index) * RANK_X_SPREAD
+    )
+    const y = hasCategoryY && Number.isFinite(result.embedding_y)
+      ? result.embedding_y! * AXIS_SPREAD
+      : rankY * RANK_SPREAD
     // slight deterministic depth jitter so the constellation isn't a perfectly flat card
     const z = seeded(index * 3.1) * 0.8
 
@@ -241,6 +235,7 @@ type StarProps = {
 
 function Star({ result, unit, position, spreadOffset, spreading, delay, revealed, onHoverChange }: StarProps) {
   const groupRef = useRef<Group>(null!)
+  const initialPosition = useRef(position)
   const meshRef = useRef<Mesh>(null!)
   const [hovered, setHovered] = useState(false)
   const color = useMemo(() => starColor(unit), [unit])
@@ -299,7 +294,7 @@ function Star({ result, unit, position, spreadOffset, spreading, delay, revealed
   }
 
   return (
-    <group ref={groupRef} position={position}>
+    <group ref={groupRef} position={initialPosition.current}>
       {/* invisible hit-sphere, bigger than the visible dot — this is the actual
           "radius" used for both hover and cluster-overlap detection, so the
           cursor stays "in" a spread cluster even in the gaps between the now
@@ -348,8 +343,11 @@ function clusterOf(start: number, placed: { neighbors: number[] }[]) {
   return [...seen]
 }
 
-function ResultStars({ results, revealed }: ResultStarsProps) {
-  const placed = useMemo(() => layoutStars(results), [results])
+function ResultStars({ results, revealed, hasCategoryX, hasCategoryY }: ResultStarsProps) {
+  const placed = useMemo(
+    () => layoutStars(results, hasCategoryX, hasCategoryY),
+    [results, hasCategoryX, hasCategoryY],
+  )
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

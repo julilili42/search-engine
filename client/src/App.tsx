@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
-import { CATEGORY_X_LABEL, CATEGORY_Y_LABEL } from "@/galaxy/categories"
 import { PAGE_SIZE } from "@/galaxy/ResultStars"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,25 +45,30 @@ function App() {
   const [phase, setPhase] = useState<Phase>("idle")
   const [page, setPage] = useState(0)
   const [flashNonce, setFlashNonce] = useState(0)
-  const [categoryX, setCategoryX] = useState(CATEGORY_X_LABEL)
-  const [categoryY, setCategoryY] = useState(CATEGORY_Y_LABEL)
+  const [categoryX, setCategoryX] = useState("")
+  const [categoryY, setCategoryY] = useState("")
   const prevPhase = useRef<Phase>("idle")
+  const phaseRef = useRef<Phase>("idle")
+  const categoryRequest = useRef(0)
 
   useEffect(() => {
     if (prevPhase.current === "warping" && phase === "results") {
       setFlashNonce((n) => n + 1)
     }
     prevPhase.current = phase
+    phaseRef.current = phase
   }, [phase])
+
+  useEffect(() => {
+    if (phase !== "results") return
+    const timer = setTimeout(() => void applyCategories(categoryX, categoryY), 350)
+    return () => clearTimeout(timer)
+  }, [categoryX, categoryY])
 
   function searchUrl(q: string, catX: string, catY: string) {
     const params = new URLSearchParams({ q, top_n: String(RESULTS_FETCH_COUNT) })
-    // only send overrides when they actually differ, so the backend can keep
-    // using its cached default axis embeddings for the common case
-    if (catX !== CATEGORY_X_LABEL || catY !== CATEGORY_Y_LABEL) {
-      params.set("cat_x", catX)
-      params.set("cat_y", catY)
-    }
+    if (catX.trim()) params.set("cat_x", catX.trim())
+    if (catY.trim()) params.set("cat_y", catY.trim())
     return `/search?${params}`
   }
 
@@ -74,6 +78,8 @@ function App() {
     if (!q || loading) return
 
     setPhase("warping")
+    phaseRef.current = "warping"
+    categoryRequest.current += 1
     setLoading(true)
     setError(null)
     setPage(0)
@@ -108,23 +114,22 @@ function App() {
   // no warp, no re-fetch of the search itself, just a fresh layout
   async function applyCategories(catX: string, catY: string) {
     const q = query.trim()
-    if (!q || phase !== "results") return
+    if (!q || phaseRef.current !== "results") return
+    const request = ++categoryRequest.current
     try {
       const res = await fetch(searchUrl(q, catX, catY))
       if (!res.ok) return
       const data: SearchResult[] = await res.json()
-      setResults(data)
+      if (request === categoryRequest.current) setResults(data)
     } catch {
       // keep the previous layout if the recategorize request fails
     }
   }
 
-  function handleAxisKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") event.currentTarget.blur()
-  }
-
   function goBack() {
     setPhase("idle")
+    phaseRef.current = "idle"
+    categoryRequest.current += 1
     setSearched(false)
     setResults([])
     setError(null)
@@ -133,6 +138,8 @@ function App() {
 
   const totalPages = Math.ceil(results.length / PAGE_SIZE)
   const pagedResults = results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const hasCategoryX = Boolean(categoryX.trim())
+  const hasCategoryY = Boolean(categoryY.trim())
 
   function goToPage(delta: number) {
     setPage((p) => Math.min(Math.max(p + delta, 0), totalPages - 1))
@@ -147,7 +154,15 @@ function App() {
   return (
     <div className="relative h-svh w-svw overflow-hidden bg-[#05060d] text-white">
       <main className="absolute inset-0">
-        <Scene phase={phase} results={results} page={page} totalPages={totalPages} onPageDelta={goToPage} />
+        <Scene
+          phase={phase}
+          results={results}
+          page={page}
+          totalPages={totalPages}
+          onPageDelta={goToPage}
+          hasCategoryX={hasCategoryX}
+          hasCategoryY={hasCategoryY}
+        />
         {flashNonce > 0 && (
           <div
             key={flashNonce}
@@ -182,9 +197,8 @@ function App() {
               <input
                 value={categoryX}
                 onChange={(e) => setCategoryX(e.target.value)}
-                onBlur={() => applyCategories(categoryX, categoryY)}
-                onKeyDown={handleAxisKeyDown}
                 title="Click to change the X axis category"
+                placeholder="X category"
                 className="w-56 bg-transparent text-right uppercase outline-none placeholder:text-white/30 focus:text-white/80"
               />
               <span>→</span>
@@ -194,9 +208,8 @@ function App() {
               <input
                 value={categoryY}
                 onChange={(e) => setCategoryY(e.target.value)}
-                onBlur={() => applyCategories(categoryX, categoryY)}
-                onKeyDown={handleAxisKeyDown}
                 title="Click to change the Y axis category"
+                placeholder="Y category"
                 className="h-56 bg-transparent uppercase outline-none placeholder:text-white/30 focus:text-white/80 [writing-mode:vertical-rl]"
               />
             </div>

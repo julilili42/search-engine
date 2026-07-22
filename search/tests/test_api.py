@@ -70,8 +70,6 @@ def test_search_accepts_custom_category_axes(client, monkeypatch):
     monkeypatch.setattr("tuebingen_search.api.embed_texts", fake_embed)
     monkeypatch.setattr(search_module, "embed_texts", fake_embed)
     client.app.state.doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
-    client.app.state.category_axes = np.array([[1.0, 0.0], [0.0, 1.0]])
-
     default_results = client.get("/search", params={"q": "banana cherry"}).json()
     custom_results = client.get(
         "/search", params={"q": "banana cherry", "cat_x": "custom x", "cat_y": "custom y"}
@@ -79,7 +77,23 @@ def test_search_accepts_custom_category_axes(client, monkeypatch):
 
     default_coords = {r["path"]: (r["embedding_x"], r["embedding_y"]) for r in default_results}
     custom_coords = {r["path"]: (r["embedding_x"], r["embedding_y"]) for r in custom_results}
+    assert set(default_coords.values()) == {(None, None)}
     assert default_coords != custom_coords
+
+
+def test_search_accepts_a_single_category_axis(client, monkeypatch):
+    import sys
+
+    import numpy as np
+
+    search_module = sys.modules["tuebingen_search.search"]
+    monkeypatch.setattr("tuebingen_search.api.embed_texts", lambda _: np.array([[1.0, 0.0]]))
+    monkeypatch.setattr(search_module, "embed_texts", lambda _: np.array([[1.0, 0.0]]))
+    client.app.state.doc_embeddings = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]])
+
+    results = client.get("/search", params={"q": "banana cherry", "cat_x": "research"}).json()
+
+    assert all(result["embedding_x"] is not None and result["embedding_y"] is None for result in results)
 
 
 def test_health_reports_document_count(client):
