@@ -134,6 +134,7 @@ function Scene({ phase, results, page, totalPages, onPageDelta, hasCategoryX, ha
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (phase !== "results") return
+    gsap.killTweensOf([settled.current, lookAt.current])
     dragStartX.current = event.clientX
     event.currentTarget.setPointerCapture(event.pointerId)
   }
