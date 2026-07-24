@@ -131,37 +131,13 @@ def _write_json(path: Path, data: dict[str, object]) -> None:
 # saving of intermediate state
 def save_crawl_state(path: Path, state: CrawlState) -> None:
     data = asdict(state)
-    del data["seen_urls"], data["seen_texts"]
+    data["seen_urls"] = sorted(state.seen_urls)
+    data["seen_texts"] = sorted(state.seen_texts)
     data["seen_sitemaps"] = sorted(state.seen_sitemaps)
     _write_json(path, data)
 
 
-def save_shared_state(path: Path, seen_urls: set[str], seen_texts: set[int]) -> None:
-    _write_json(
-        path,
-        {
-            "seen_urls": sorted(seen_urls),
-            "seen_texts": sorted(seen_texts),
-        },
-    )
-
-# shared deduplication state across all crawl hosts
-def load_shared_state(path: Path) -> tuple[set[str], set[int]]:
-    if not path.exists():
-        logger.info("No shared state found %s.", path)
-        return set(), set()
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        state = TypeAdapter(CrawlState).validate_python(data)
-        logger.info("Shared state was loaded successfully.")
-        return state.seen_urls, state.seen_texts
-    except Exception as exc:
-        logger.error("Failed to load shared state %s.", exc)
-        raise
-
-
-# global crawl state, persisted between crawl runs
+# crawl state, persisted between crawl runs
 def load_crawl_state(path: Path) -> tuple[CrawlState, bool]:
     if not path.exists():
         logger.info("No intermediate state found %s.", path)

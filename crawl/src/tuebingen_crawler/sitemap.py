@@ -8,7 +8,7 @@ from xml.etree import ElementTree
 import httpx
 
 from .frontier import GlobalFrontier
-from .models import CrawlState
+from .models import CrawlContext
 from .urls import canonical_url, same_origin
 
 logger = logging.getLogger(__name__)
@@ -20,14 +20,11 @@ MAX_SITEMAP_BYTES = 5_000_000
 
 
 def ingest_sitemaps(
-    client: httpx.Client,
+    context: CrawlContext,
     sitemap_urls: list[str],
     source_url: str,
-    state: CrawlState,
     frontier: GlobalFrontier,
     seed_index: int,
-    request_delay: float,
-    request_timeout: float,
 ) -> int:
     pending = list(sitemap_urls)
     queued_urls = 0
@@ -41,11 +38,15 @@ def ingest_sitemaps(
         if sitemap_url is None:
             continue
         with frontier.lock:
-            if sitemap_url in state.seen_sitemaps:
+            if sitemap_url in context.state.seen_sitemaps:
                 continue
-            state.seen_sitemaps.add(sitemap_url)
+            context.state.seen_sitemaps.add(sitemap_url)
         body = _fetch_sitemap(
-            client, sitemap_url, source_url, request_delay, request_timeout
+            context.client,
+            sitemap_url,
+            source_url,
+            context.config.request_delay,
+            context.config.request_timeout,
         )
         if body is None:
             continue

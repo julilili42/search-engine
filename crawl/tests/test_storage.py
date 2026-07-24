@@ -5,14 +5,12 @@ import httpx
 import pytest
 
 from tuebingen_crawler.models import CrawlState, FrontierEntry, Statistics
-from tuebingen_crawler.paths import global_seen_state_path
+from tuebingen_crawler.paths import crawl_state_path
 from tuebingen_crawler.storage import (
     RobotsCache,
-    load_shared_state,
     load_seed_toml,
     load_crawl_state,
     save_html,
-    save_shared_state,
     save_crawl_state,
 )
 
@@ -105,8 +103,8 @@ def test_robots_cache_logs_a_missing_sitemap_once(caplog):
     ]
 
 
-def test_global_seen_state_path(tmp_path):
-    assert global_seen_state_path(tmp_path) == tmp_path / "state" / "global_seen.json"
+def test_crawl_state_path(tmp_path):
+    assert crawl_state_path(tmp_path) == tmp_path / "state" / "crawl_state.json"
 
 
 def test_save_html_writes_file_under_normalized_hostname(tmp_path):
@@ -120,7 +118,7 @@ def test_save_html_writes_file_under_normalized_hostname(tmp_path):
     assert saved.read_bytes() == body
 
 
-def test_save_crawl_state_omits_shared_sets_but_keeps_seen_sitemaps(tmp_path):
+def test_save_crawl_state_roundtrip(tmp_path):
     path = tmp_path / "state" / "crawl_state.json"
     state = CrawlState(
         frontier=[
@@ -133,7 +131,6 @@ def test_save_crawl_state_omits_shared_sets_but_keeps_seen_sitemaps(tmp_path):
         queued_urls_by_host={"host": 2},
         counter=2,
         statistics=Statistics(fetched=1, discovered=2, failed=0, saved=1),
-        seed_statistics={0: Statistics(fetched=1, discovered=2)},
     )
 
     save_crawl_state(path, state)
@@ -141,22 +138,12 @@ def test_save_crawl_state_omits_shared_sets_but_keeps_seen_sitemaps(tmp_path):
 
     assert ok
     assert loaded.frontier == state.frontier
-    assert loaded.seen_urls == set()
-    assert loaded.seen_texts == set()
+    assert loaded.seen_urls == state.seen_urls
+    assert loaded.seen_texts == state.seen_texts
     assert loaded.seen_sitemaps == {"https://host/sitemap.xml"}
     assert loaded.queued_urls_by_host == state.queued_urls_by_host
     assert loaded.counter == state.counter
     assert loaded.statistics == state.statistics
-    assert loaded.seed_statistics == state.seed_statistics
-
-
-def test_save_and_load_shared_state_roundtrip(tmp_path):
-    path = global_seen_state_path(tmp_path)
-    save_shared_state(path, {"https://host/a", "https://host/b"}, {123, 456})
-
-    assert load_shared_state(path) == ({"https://host/a", "https://host/b"}, {123, 456})
-
-
 def test_save_crawl_state_leaves_no_tmp_file(tmp_path):
     path = tmp_path / "crawl_state.json"
     save_crawl_state(path, CrawlState())

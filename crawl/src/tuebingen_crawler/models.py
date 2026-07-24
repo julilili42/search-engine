@@ -2,10 +2,20 @@
 from __future__ import annotations
 from dataclasses import field, dataclass
 from enum import StrEnum
-from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    import httpx
+
+    from .stores import LinkStore, PageStore
+    from .storage import RobotsCache
+    from .verdict_models import VerdictModels
 
 MAX_SAVED_PAGES_PER_HOST = 2000
+MAX_SAVED_PAGES = 60_000
 
 
 class Language(StrEnum):
@@ -25,9 +35,15 @@ class Config:
     sites: list[CrawlSite] = field(default_factory=list)
     accept: str = "text/html"
     user_agent: str = "Crawler/0.1"
+    request_delay: float = 0.7
+    request_timeout: float = 30.0
+    retry_delay: float = 10.0
+    retries: int = 2
     save_dir: Path = field(default_factory=lambda: Path("data"))
     state_dir: Path | None = None
-    save_state_every: int = 10
+    # Seconds between resumable crawl-state checkpoints. Zero disables them.
+    save_state_every: float = 300.0
+    max_pages: int | None = MAX_SAVED_PAGES
     # Saved-page limit per host; None = unlimited.
     max_pages_per_host: int | None = MAX_SAVED_PAGES_PER_HOST
 
@@ -38,26 +54,11 @@ class Statistics:
     failed: int = 0
     saved: int = 0
 
-    # TODO: replace print with logging
-    def print(self) -> None:
-        print(f"Fetched:    {self.fetched}")
-        print(f"Discovered: {self.discovered}")
-        print(f"Failed:     {self.failed}")
-        print(f"Saved:      {self.saved}")
-
 # since we read from json, we need to validate the input
 class CrawlSite(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True, str_strip_whitespace=True)
 
     url: str
-    max_pages_per_seed: int | None = None
-    # Limits processed frontier URLs, including rejected and failed pages.
-    max_discovered_per_seed: int | None = Field(default=None, ge=0)
-    request_timeout: float = 30.0
-    retry_delay: float = 10.0
-    request_delay: float = 0.01
-    retries: int = Field(default=2, ge=1)
-    sitemap: bool = False
 
 @dataclass(order=True)
 class FrontierEntry:
@@ -85,4 +86,16 @@ class CrawlState:
     queued_urls_by_host: dict[str, int] = field(default_factory=dict)
     counter: int = 0
     statistics: Statistics = field(default_factory=Statistics)
-    seed_statistics: dict[int, Statistics] = field(default_factory=dict)
+
+
+@dataclass
+class CrawlContext:
+    config: Config
+    client: httpx.Client
+    state: CrawlState
+    page_store: PageStore
+    link_store: LinkStore
+    robots: RobotsCache
+    host_counts: dict[str, int]
+    host_reject_counts: dict[str, int]
+    verdict_models: VerdictModels

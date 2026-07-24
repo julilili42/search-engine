@@ -3,26 +3,26 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import time
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
 
-from .lease_processor import CrawlContext, process_claimed_lease
+from .lease_processor import process_claimed_lease
 from .frontier import GlobalFrontier
-from .models import Config, CrawlSite, CrawlState
-from .paths import global_frontier_state_path, global_seen_state_path
+from .models import Config, CrawlContext, CrawlSite, CrawlState
+from .paths import crawl_state_path
+from .sitemap import ingest_sitemaps
 from .stores import LinkStore, PageStore
 from .storage import (
     RobotsCache,
-    load_shared_state,
     load_crawl_state,
-    save_shared_state,
     save_crawl_state,
 )
+from .verdict_models import VerdictModels
 from .urls import validate_start_url
-from verdict_ml.link.predict import LinkVerdictPredictor
-from verdict_ml.page.predict import PageVerdictPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -34,31 +34,35 @@ def crawl_hostname(
     config: Config,
     page_store: PageStore,
     link_store: LinkStore,
-    page_critic: PageVerdictPredictor,
-    link_critic: LinkVerdictPredictor,
+    verdict_models: VerdictModels,
 ) -> None:
     state_dir = config.state_dir or config.save_dir
-    state_path = global_frontier_state_path(state_dir)
-    shared_state_path = global_seen_state_path(state_dir)
+    state_path = crawl_state_path(state_dir)
     state, loaded = load_crawl_state(state_path)
-    state.seen_urls, state.seen_texts = load_shared_state(shared_state_path)
     host_counts = page_store.host_counts()
+    state.statistics.saved = max(state.statistics.saved, sum(host_counts.values()))
 
     with httpx.Client(
         headers={"Accept": config.accept, "Accept-Language": "en", "User-Agent": config.user_agent}
     ) as client:
         robots = RobotsCache(client)
-        sites = _prepare_sites(config, robots)
+        sites = dict(enumerate(config.sites)) if loaded else _prepare_sites(config, robots)
         frontier = GlobalFrontier(
             state,
-            request_delays={seed_index: site.request_delay for seed_index, site in sites.items()},
-            max_pages_per_seed={
-                seed_index: site.max_pages_per_seed for seed_index, site in sites.items()
-            },
-            max_discovered_per_seed={
-                seed_index: site.max_discovered_per_seed for seed_index, site in sites.items()
-            },
+            request_delay=config.request_delay,
+            max_pages=config.max_pages,
             saved_urls_by_host=host_counts,
+        )
+        context = CrawlContext(
+            config=config,
+            client=client,
+            state=state,
+            page_store=page_store,
+            link_store=link_store,
+            robots=robots,
+            host_counts=host_counts,
+            host_reject_counts={},
+            verdict_models=verdict_models,
         )
         if not loaded:
             for seed_index, site in sites.items():
@@ -69,34 +73,31 @@ def crawl_hostname(
                     seed_index,
                     seed=True,
                 )
-
-        context = CrawlContext(
-            client=client,
-            state=state,
-            page_store=page_store,
-            link_store=link_store,
-            robots=robots,
-            user_agent=config.user_agent,
-            save_dir=config.save_dir,
-            host_counts=host_counts,
-            host_reject_counts={},
-            max_pages_per_host=config.max_pages_per_host,
-            page_critic=page_critic,
-            link_critic=link_critic,
-        )
+                sitemap_urls = robots.site_maps(site.url)
+                if sitemap_urls:
+                    ingest_sitemaps(
+                        context,
+                        sitemap_urls,
+                        site.url,
+                        frontier,
+                        seed_index,
+                    )
         try:
             _run_global(
                 frontier,
                 sites,
                 context,
-                config.save_state_every,
                 state_path,
-                shared_state_path,
             )
         finally:
             save_crawl_state(state_path, frontier.snapshot())
-            save_shared_state(shared_state_path, state.seen_urls, state.seen_texts)
-            state.statistics.print()
+            logger.info(
+                "Finished: fetched=%d discovered=%d failed=%d saved=%d",
+                state.statistics.fetched,
+                state.statistics.discovered,
+                state.statistics.failed,
+                state.statistics.saved,
+            )
 
 
 def _prepare_sites(config: Config, robots: RobotsCache) -> dict[int, CrawlSite]:
@@ -120,27 +121,24 @@ def _run_global(
     frontier: GlobalFrontier,
     sites: dict[int, CrawlSite],
     context: CrawlContext,
-    save_state_every: int,
     state_path: Path,
-    shared_state_path: Path,
 ) -> None:
     if not sites:
         return
     checkpoint_lock = threading.Lock()
-    last_checkpoint = 0
+    last_checkpoint = time.monotonic()
 
     def checkpoint() -> None:
         nonlocal last_checkpoint
-        if save_state_every <= 0:
+        if context.config.save_state_every <= 0:
             return
-        with checkpoint_lock, frontier.lock:
-            discovered = frontier.state.statistics.discovered
-            if discovered - last_checkpoint < save_state_every:
+        with checkpoint_lock:
+            if time.monotonic() - last_checkpoint < context.config.save_state_every:
                 return
-            snapshot = frontier.snapshot()
-            last_checkpoint = discovered
-            save_crawl_state(state_path, snapshot)
-            save_shared_state(shared_state_path, snapshot.seen_urls, snapshot.seen_texts)
+            with frontier.lock:
+                snapshot = deepcopy(frontier.snapshot())
+            last_checkpoint = time.monotonic()
+        save_crawl_state(state_path, snapshot)
 
     def worker() -> None:
         while (lease := frontier.claim()) is not None:

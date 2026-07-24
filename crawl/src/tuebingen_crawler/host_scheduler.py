@@ -12,15 +12,14 @@ class HostState:
     queue: list[FrontierEntry] = field(default_factory=list)
     version: int = 0
     next_ready_at: float = 0.0
-    request_delay: float = 0.0
     in_flight: bool = False
 
 
 # Schedules ready/delayed hosts; each HostState owns its URL heap.
 class _HostScheduler:
-    def __init__(self, state: CrawlState, request_delays: dict[int, float]) -> None:
+    def __init__(self, state: CrawlState, request_delay: float) -> None:
         self.state = state
-        self.request_delays = request_delays
+        self.request_delay = request_delay
         self._ready_hosts = []
         self._delayed_hosts = []
         self._states: dict[str, HostState] = {}
@@ -29,9 +28,6 @@ class _HostScheduler:
         state = self._states.setdefault(host, HostState())
         heapq.heappush(state.queue, entry)
         self.state.queued_urls_by_host[host] = self.state.queued_urls_by_host.get(host, 0) + 1
-        state.request_delay = max(
-            state.request_delay, self.request_delays.get(entry.seed_index, 0.0)
-        )
 
     def schedule(self, host: str) -> None:
         state = self._states.get(host)
@@ -79,7 +75,7 @@ class _HostScheduler:
         state = self._states[host]
         state.next_ready_at = max(
             state.next_ready_at,
-            claimed_at + state.request_delay,
+            claimed_at + self.request_delay,
             time.monotonic() + cooldown_seconds,
         )
 

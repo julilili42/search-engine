@@ -4,7 +4,6 @@ import heapq
 import math
 import threading
 import time
-from enum import Enum, auto
 
 from .host_scheduler import _HostScheduler
 from .models import CrawlLease, CrawlState, FrontierEntry
@@ -45,38 +44,28 @@ def count_frontier_hosts(frontier: list[FrontierEntry]) -> dict[str, int]:
     return counts
 
 
-class SeedStatus(Enum):
-    AVAILABLE = auto()
-    BLOCKED = auto()
-    EXHAUSTED = auto()
-
-
 # One request per host: queued -> ready/delayed -> in-flight -> ready/delayed.
 class GlobalFrontier:
     def __init__(
         self,
         state: CrawlState,
         *,
-        request_delays: dict[int, float],
-        max_pages_per_seed: dict[int, int | None],
-        max_discovered_per_seed: dict[int, int | None],
+        request_delay: float,
+        max_pages: int | None,
         saved_urls_by_host: dict[str, int] | None = None,
     ) -> None:
         # configuration
         self.state = state
-        self.max_pages_per_seed = max_pages_per_seed
-        self.max_discovered_per_seed = max_discovered_per_seed
+        self.max_pages = max_pages
         self.saved_urls_by_host = saved_urls_by_host if saved_urls_by_host is not None else {}
 
         # synchronization
         self.lock = threading.RLock()
         self._condition = threading.Condition(self.lock)
 
-        self._host_scheduler = _HostScheduler(state, request_delays)
+        self._host_scheduler = _HostScheduler(state, request_delay)
 
-        # seed scheduling
-        self._in_flight_by_seed: dict[int, int] = {}
-        self._blocked_hosts_by_seed: dict[int, set[str]] = {}
+        self._in_flight = 0
 
         queued = state.frontier.copy()
         state.frontier.clear()
@@ -108,6 +97,12 @@ class GlobalFrontier:
     def claim(self) -> CrawlLease | None:
         with self.lock:
             while True:
+                if self.max_pages is not None:
+                    if self.state.statistics.saved >= self.max_pages:
+                        return None
+                    if self.state.statistics.saved + self._in_flight >= self.max_pages:
+                        self._wait()
+                        continue
                 now = time.monotonic()
                 self._host_scheduler.promote_due_hosts(now)
                 while ready_host := self._host_scheduler.pop_ready_host():
@@ -125,9 +120,10 @@ class GlobalFrontier:
                     return None
 
     # Always release a lease, including after a fetch or parser failure.
-    def finish(self, lease: CrawlLease, *, saved: bool, cooldown_seconds: float = 0.0) -> None:
+    def finish(self, lease: CrawlLease, *, cooldown_seconds: float = 0.0) -> None:
         with self.lock:
-            self._release_lease(lease, saved)
+            self._host_scheduler.release(lease.host)
+            self._in_flight -= 1
             self._reschedule_host(lease, cooldown_seconds)
             self._notify()
 
@@ -153,56 +149,11 @@ class GlobalFrontier:
         entry = self._host_scheduler.pop_entry(host, version)
         if entry is None:
             return None
-        seed_status = self._seed_status(entry.seed_index)
-        if seed_status is SeedStatus.EXHAUSTED:
-            self._schedule_host(host)
-            return None
-        if seed_status is SeedStatus.BLOCKED:
-            self._host_scheduler.requeue(host, entry)
-            self._blocked_hosts_by_seed.setdefault(entry.seed_index, set()).add(host)
-            return None
 
         self._host_scheduler.start(host)
-        self._in_flight_by_seed[entry.seed_index] = (
-            self._in_flight_by_seed.get(entry.seed_index, 0) + 1
-        )
+        self._in_flight += 1
         self.state.statistics.discovered += 1
-        self.state.seed_statistics.setdefault(
-            entry.seed_index, type(self.state.statistics)()
-        ).discovered += 1
         return CrawlLease(entry, host, claimed_at)
-
-    # Seed limits and lease completion
-    def _seed_status(self, seed_index: int) -> SeedStatus:
-        stats = self.state.seed_statistics.setdefault(seed_index, type(self.state.statistics)())
-        discovered_limit = self.max_discovered_per_seed.get(seed_index)
-        if discovered_limit is not None and stats.discovered >= discovered_limit:
-            return SeedStatus.EXHAUSTED
-
-        saved_limit = self.max_pages_per_seed.get(seed_index)
-        if saved_limit is None:
-            return SeedStatus.AVAILABLE
-        if stats.saved >= saved_limit:
-            return SeedStatus.EXHAUSTED
-        if stats.saved + self._in_flight_by_seed.get(seed_index, 0) >= saved_limit:
-            return SeedStatus.BLOCKED
-        return SeedStatus.AVAILABLE
-
-    def _wake_seed_hosts(self, seed_index: int) -> None:
-        for host in self._blocked_hosts_by_seed.pop(seed_index, set()):
-            self._schedule_host(host)
-
-    def _release_lease(self, lease: CrawlLease, saved: bool) -> None:
-        self._host_scheduler.release(lease.host)
-        seed_index = lease.entry.seed_index
-        self._in_flight_by_seed[seed_index] = max(
-            0, self._in_flight_by_seed.get(seed_index, 1) - 1
-        )
-        if saved:
-            self.state.seed_statistics.setdefault(
-                seed_index, type(self.state.statistics)()
-            ).saved += 1
-        self._wake_seed_hosts(seed_index)
 
     # Host scheduling
     def _reschedule_host(self, lease: CrawlLease, cooldown_seconds: float) -> None:

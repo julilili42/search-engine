@@ -25,9 +25,8 @@ def test_host_reject_budget_exhausted_blocks_unproductive_hosts():
 def test_push_priority_score_penalizes_depth_and_host_saturation():
     frontier = GlobalFrontier(
         CrawlState(),
-        request_delays={},
-        max_pages_per_seed={},
-        max_discovered_per_seed={},
+        request_delay=0.0,
+        max_pages=None,
         saved_urls_by_host={"example.org": 6},
     )
     frontier.state.queued_urls_by_host = {"example.org": 3}

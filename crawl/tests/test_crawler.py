@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 import tuebingen_crawler.crawl_runner as scheduler_module
-from tuebingen_crawler.lease_processor import CrawlContext, process_claimed_lease
+from tuebingen_crawler.lease_processor import process_claimed_lease
 from tuebingen_crawler.frontier import (
     GlobalFrontier,
     HOST_REJECT_CUTOFF,
@@ -14,18 +14,23 @@ from tuebingen_crawler.frontier import (
 from tuebingen_crawler.crawl_runner import crawl_hostname
 from tuebingen_crawler.link_evaluation import (
     LINK_SCORE_WEIGHT,
-    MAX_EXPLORATION_LINKS_PER_PAGE,
     MAX_SELECTED_LINKS_PER_PAGE,
-    MAX_SELECTED_LINKS_PER_TARGET_HOST,
-    MAX_SELECTED_LINKS_PER_URL_FAMILY,
-    MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY,
     evaluate_links as _evaluate_links,
 )
 from tuebingen_crawler.link_classifier import classify_link
-from tuebingen_crawler.models import Config, CrawlSite, CrawlState
-from tuebingen_crawler.stores import LinkStore, PageStore
+from tuebingen_crawler.models import (
+    Config,
+    CrawlContext,
+    CrawlLease,
+    CrawlSite,
+    CrawlState,
+    FrontierEntry,
+)
+from tuebingen_crawler.page_evaluation import PageEvaluation
+from tuebingen_crawler.stores import LinkStore, PageStore, PageVerdictMetadata
 from tuebingen_crawler.storage import RobotsCache
 from tuebingen_crawler.urls import validate_start_url
+from tuebingen_crawler.verdict_models import VerdictModels
 from verdict_ml.base import VerdictPrediction
 
 HTML_HEADERS = {"Content-Type": "text/html; charset=utf-8"}
@@ -125,11 +130,6 @@ def allow_all_robots() -> RobotFileParser:
 def make_site(**overrides) -> CrawlSite:
     defaults = dict(
         url="https://host/",
-        max_pages_per_seed=100,
-        request_timeout=1.0,
-        retry_delay=0.0,
-        request_delay=0.0,
-        retries=1,
     )
     defaults.update(overrides)
     return CrawlSite(**defaults)
@@ -140,17 +140,38 @@ def evaluate_links(*, state, host_counts, **kwargs):
         "frontier",
         GlobalFrontier(
             state,
-            request_delays={0: 0.0},
-            max_pages_per_seed={0: None},
-            max_discovered_per_seed={0: None},
+            request_delay=0.0,
+            max_pages=None,
             saved_urls_by_host=host_counts,
         ),
     )
-    _evaluate_links(
+    context = CrawlContext(
+        config=Config(max_pages_per_host=kwargs.pop("max_pages_per_host")),
+        client=None,
         state=state,
+        page_store=None,
+        link_store=kwargs.pop("link_store", None),
+        robots=None,
         host_counts=host_counts,
+        host_reject_counts=kwargs.pop("host_reject_counts", {}),
+        verdict_models=VerdictModels(None, kwargs.pop("link_critic")),
+    )
+    page_evaluation = PageEvaluation(
+        links=kwargs.pop("links"),
+        relevance=kwargs.pop("parent_relevance"),
+        verdict=kwargs.pop("parent_pageverdict", None)
+        or PageVerdictMetadata(score=None, label=None, decision=None, model=None, snippet=None),
+    )
+    lease = CrawlLease(
+        FrontierEntry(0.0, 0, kwargs.pop("current_url"), kwargs.pop("depth"), 0),
+        kwargs.pop("parent_host"),
+        0.0,
+    )
+    _evaluate_links(
+        context,
+        page_evaluation=page_evaluation,
         frontier=frontier,
-        seed_index=0,
+        lease=lease,
         **kwargs,
     )
     frontier.snapshot()
@@ -164,6 +185,7 @@ def run_crawl(
     seen_urls=None,
     host_counts=None,
     host_reject_counts=None,
+    max_pages=None,
     max_pages_per_host=None,
     page_critic=None,
     link_critic=None,
@@ -182,6 +204,7 @@ def run_crawl(
                 seen_urls=seen_urls,
                 host_counts=host_counts,
                 host_reject_counts=host_reject_counts,
+                max_pages=max_pages,
                 max_pages_per_host=max_pages_per_host,
                 page_critic=page_critic,
                 link_critic=link_critic,
@@ -195,25 +218,29 @@ def run_crawl(
     host_reject_counts = host_reject_counts if host_reject_counts is not None else {}
     frontier = GlobalFrontier(
         state,
-        request_delays={0: site.request_delay},
-        max_pages_per_seed={0: site.max_pages_per_seed},
-        max_discovered_per_seed={0: site.max_discovered_per_seed},
+        request_delay=0.0,
+        max_pages=max_pages,
         saved_urls_by_host=host_counts,
     )
     frontier.submit(1_000_000.0, validate_start_url(site.url), 0, 0, seed=True)
     context = CrawlContext(
+        config=Config(
+            user_agent="TestCrawler/1.0",
+            request_delay=0.0,
+            request_timeout=1.0,
+            retry_delay=0.0,
+            retries=1,
+            save_dir=tmp_path,
+            max_pages_per_host=max_pages_per_host,
+        ),
         client=client,
         state=state,
         page_store=page_store,
         link_store=link_store,
         robots=robots or allow_all_robots(),
-        user_agent="TestCrawler/1.0",
-        save_dir=tmp_path,
         host_counts=host_counts,
         host_reject_counts=host_reject_counts,
-        max_pages_per_host=max_pages_per_host,
-        page_critic=page_critic,
-        link_critic=link_critic,
+        verdict_models=VerdictModels(page_critic, link_critic),
     )
     while (lease := frontier.claim()) is not None:
         process_claimed_lease(context, site, frontier, lease)
@@ -241,47 +268,32 @@ def test_crawl_run_visits_all_reachable_pages(client, tmp_path, page_store, requ
     assert sorted(requested_paths) == ["/", "/a", "/b", "/c"]
 
 
-def test_sitemap_fallback_is_fetched_once(client, tmp_path, page_store, requested_paths):
-    pages = {
-        "/": page("root"),
-        "/sitemap.xml": b"<urlset><url><loc>https://host/fallback</loc></url></urlset>",
-        "/fallback": page("fallback"),
-    }
-    with make_client(pages, requested_paths) as sitemap_client:
-        run_crawl(
-            sitemap_client,
-            tmp_path,
-            page_store,
-            robots=RobotsCache(sitemap_client),
-            sitemap=True,
-        )
-
-    assert stored_urls(page_store) == ["https://host/", "https://host/fallback"]
-    assert requested_paths.count("/sitemap.xml") == 1
-
-
 def test_global_lease_is_released_when_fetch_raises(
     monkeypatch, client, tmp_path, page_store, link_store
 ):
     context = CrawlContext(
+        config=Config(
+            user_agent="TestCrawler/1.0",
+            request_delay=0.0,
+            request_timeout=1.0,
+            retry_delay=0.0,
+            retries=1,
+            save_dir=tmp_path,
+            max_pages_per_host=None,
+        ),
         client=client,
-        save_dir=tmp_path,
         page_store=page_store,
         link_store=link_store,
         robots=allow_all_robots(),
-        user_agent="TestCrawler/1.0",
-        page_critic=FakePagePredictor(),
-        link_critic=FakeLinkPredictor(),
+        verdict_models=VerdictModels(FakePagePredictor(), FakeLinkPredictor()),
         state=CrawlState(),
         host_counts={},
         host_reject_counts={},
-        max_pages_per_host=None,
     )
     frontier = GlobalFrontier(
         context.state,
-        request_delays={0: 0.0},
-        max_pages_per_seed={0: None},
-        max_discovered_per_seed={0: None},
+        request_delay=0.0,
+        max_pages=None,
     )
     frontier.submit(9.0, "https://host/first", 0, 0)
     frontier.submit(8.0, "https://host/second", 0, 0)
@@ -358,17 +370,10 @@ def test_crawl_run_stores_pageverdict_metadata(client, tmp_path, page_store):
     assert link_row["parent_pageverdict_decision"] == "index_strong"
 
 
-def test_crawl_run_respects_max_pages_per_seed(client, tmp_path, page_store, requested_paths):
-    run_crawl(client, tmp_path, page_store, max_pages_per_seed=2)
+def test_crawl_run_respects_global_max_pages(client, tmp_path, page_store, requested_paths):
+    run_crawl(client, tmp_path, page_store, max_pages=2)
 
     assert len(stored_urls(page_store)) == 2
-    assert len(requested_paths) == 2
-
-
-def test_crawl_run_respects_discovered_budget(client, tmp_path, page_store, requested_paths):
-    state = run_crawl(client, tmp_path, page_store, max_discovered_per_seed=2)
-
-    assert state.statistics.discovered == 2
     assert len(requested_paths) == 2
 
 
@@ -524,56 +529,7 @@ def test_evaluate_links_records_link_candidates(tmp_path):
     assert row["linkverdict_model"] == "fake_link_verdict.joblib"
 
 
-def test_evaluate_links_limits_exploration_to_distinct_new_hosts(tmp_path):
-    state = CrawlState()
-    links = [
-        (f"https://new-{i}.example/page", "possible Tübingen link")
-        for i in range(MAX_EXPLORATION_LINKS_PER_PAGE + 2)
-    ]
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        evaluate_links(
-            state=state,
-            links=links,
-            current_url="https://host/",
-            depth=0,
-            parent_relevance=5.0,
-            parent_host="host",
-            host_counts={},
-            max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.79),
-            link_store=link_store,
-        )
-        reasons = [
-            row[0]
-            for row in link_store.con.execute(
-                "SELECT rejection_reason FROM link_candidates WHERE selected = 0"
-            )
-        ]
-
-    assert len(state.frontier) == MAX_EXPLORATION_LINKS_PER_PAGE
-    assert reasons == ["exploration_budget"] * 2
-
-
-def test_evaluate_links_relaxes_floor_for_productive_host():
-    state = CrawlState()
-    links = [(f"https://good.example/section-{i}", "Tübingen") for i in range(4)]
-
-    evaluate_links(
-        state=state,
-        links=links,
-        current_url="https://host/",
-        depth=0,
-        parent_relevance=5.0,
-        parent_host="host",
-        host_counts={"good.example": 1},
-        max_pages_per_host=None,
-        link_critic=FakeLinkPredictor(0.50),
-    )
-
-    assert len(state.frontier) == 4
-
-
-@pytest.mark.parametrize(("depth", "score"), [(0, 0.49), (5, 0.90)])
+@pytest.mark.parametrize(("depth", "score"), [(0, 0.64), (5, 0.90)])
 def test_evaluate_links_rejects_below_floor_or_beyond_depth(depth, score):
     state = CrawlState()
 
@@ -619,29 +575,24 @@ def test_evaluate_links_caps_total_links_per_page(tmp_path):
     assert capped == 3
 
 
-def test_evaluate_links_reserves_exploration_slots():
+def test_evaluate_links_selects_highest_scores_first():
     class MixedLinkPredictor:
         def predict(self, example):
-            probability = 0.79 if "explore" in example.target_url else 0.90
             return VerdictPrediction(
                 label="positive",
-                positive_probability=probability,
+                positive_probability=0.9 if "high" in example.target_url else 0.7,
                 model_path=Path("fake_link_verdict.joblib"),
             )
 
     state = CrawlState()
-    balanced = [
-        (f"https://balanced-{i}.example/page", "Tübingen")
-        for i in range(MAX_SELECTED_LINKS_PER_PAGE)
-    ]
-    exploration = [
-        (f"https://explore-{i}.example/page", "possible Tübingen link")
-        for i in range(MAX_EXPLORATION_LINKS_PER_PAGE)
+    links = [
+        *[(f"/low-{i}", "Tübingen") for i in range(3)],
+        *[(f"/high-{i}", "Tübingen") for i in range(MAX_SELECTED_LINKS_PER_PAGE)],
     ]
 
     evaluate_links(
         state=state,
-        links=balanced + exploration,
+        links=links,
         current_url="https://host/",
         depth=0,
         parent_relevance=5.0,
@@ -651,9 +602,8 @@ def test_evaluate_links_reserves_exploration_slots():
         link_critic=MixedLinkPredictor(),
     )
 
-    selected_urls = {entry.url for entry in state.frontier}
-    assert len(selected_urls) == MAX_SELECTED_LINKS_PER_PAGE
-    assert sum("explore" in url for url in selected_urls) == MAX_EXPLORATION_LINKS_PER_PAGE
+    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_PAGE
+    assert all("high" in entry.url for entry in state.frontier)
 
 
 def test_evaluate_links_skips_model_verdict_for_skipable_link(tmp_path):
@@ -679,116 +629,6 @@ def test_evaluate_links_skips_model_verdict_for_skipable_link(tmp_path):
     assert row["linkverdict_score"] is None
     assert row["linkverdict_label"] is None
     assert row["linkverdict_model"] is None
-
-
-def test_evaluate_links_caps_links_per_url_family(tmp_path):
-    state = CrawlState()
-    # Links all in the same family (host + leading "news" segment).
-    links = [(f"/news/{i}", "Tübingen") for i in range(MAX_SELECTED_LINKS_PER_URL_FAMILY + 2)]
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        evaluate_links(
-            state=state,
-            links=links,
-            current_url="https://host/",
-            depth=0,
-            parent_relevance=5.0,
-            parent_host="host",
-            host_counts={},
-            max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.60),
-            link_store=link_store,
-        )
-        rows = link_store.con.execute(
-            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
-        ).fetchall()
-
-    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_URL_FAMILY
-    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_URL_FAMILY
-    capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
-    assert len(capped) == 2
-    # capped links would have been enqueued absent the family budget
-    assert all(row["should_enqueue"] == 1 for row in capped)
-
-
-def test_evaluate_links_allows_one_high_confidence_link_beyond_family_cap(tmp_path):
-    state = CrawlState()
-    links = [(f"/news/{i}", "Tübingen") for i in range(MAX_SELECTED_LINKS_PER_URL_FAMILY + 2)]
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        evaluate_links(
-            state=state,
-            links=links,
-            current_url="https://host/",
-            depth=0,
-            parent_relevance=5.0,
-            parent_host="host",
-            host_counts={},
-            max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.80),
-            link_store=link_store,
-        )
-        rows = link_store.con.execute(
-            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
-        ).fetchall()
-
-    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_URL_FAMILY + 1
-    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_URL_FAMILY + 1
-    capped = [row for row in rows if row["rejection_reason"] == "page_family_budget"]
-    assert len(capped) == 1
-    assert capped[0]["should_enqueue"] == 1
-
-
-def test_evaluate_links_uses_higher_wikipedia_family_cap(tmp_path):
-    state = CrawlState()
-    links = [
-        (f"https://en.wikipedia.org/wiki/Tuebingen_{i}", "Tübingen")
-        for i in range(MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY + 2)
-    ]
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        evaluate_links(
-            state=state,
-            links=links,
-            current_url="https://host/",
-            depth=0,
-            parent_relevance=5.0,
-            parent_host="host",
-            host_counts={"en.wikipedia.org": 1},
-            max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.60),
-            link_store=link_store,
-        )
-
-    assert len(state.frontier) == MAX_SELECTED_WIKIPEDIA_LINKS_PER_URL_FAMILY
-
-
-def test_evaluate_links_caps_links_per_host(tmp_path):
-    state = CrawlState()
-    # different first path segments avoid the URL-family cap; only the host cap applies
-    links = [
-        (f"https://example.com/section-{i}", "Tübingen")
-        for i in range(MAX_SELECTED_LINKS_PER_TARGET_HOST + 4)
-    ]
-    with LinkStore(tmp_path / "pages.sqlite") as link_store:
-        evaluate_links(
-            state=state,
-            links=links,
-            current_url="https://host/",
-            depth=0,
-            parent_relevance=5.0,
-            parent_host="host",
-            host_counts={},
-            max_pages_per_host=None,
-            link_critic=FakeLinkPredictor(0.9),
-            link_store=link_store,
-        )
-        rows = link_store.con.execute(
-            "SELECT selected, should_enqueue, rejection_reason FROM link_candidates"
-        ).fetchall()
-
-    assert len(state.frontier) == MAX_SELECTED_LINKS_PER_TARGET_HOST
-    assert sum(row["selected"] for row in rows) == MAX_SELECTED_LINKS_PER_TARGET_HOST
-    capped = [row for row in rows if row["rejection_reason"] == "page_host_budget"]
-    assert len(capped) == 4
-    assert all(row["should_enqueue"] == 1 for row in capped)
 
 
 def test_evaluate_links_passes_saved_host_counts_to_frontier():
@@ -984,7 +824,7 @@ def test_crawl_run_rejects_german_page_but_follows_its_links(
     pages = {"/": de_root, "/en": page("leaf en")}
 
     with make_client(pages, requested_paths) as client:
-        run_crawl(client, tmp_path, page_store, max_pages_per_seed=1)
+        run_crawl(client, tmp_path, page_store, max_pages=1)
 
     assert "https://host/" not in stored_urls(page_store)
     assert "https://host/en" in stored_urls(page_store)
@@ -1035,7 +875,9 @@ def _build_small_tree(host: str) -> dict[str, bytes]:
     }
 
 
-def _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites) -> list[str]:
+def _run_multihost_crawl(
+    monkeypatch, page_store, tmp_path, host_trees, sites, max_pages=None
+) -> list[str]:
     def handler(request):
         if request.url.path == "/robots.txt":
             return httpx.Response(200, headers=HTML_HEADERS, content=b"")
@@ -1053,11 +895,10 @@ def _run_multihost_crawl(monkeypatch, page_store, tmp_path, host_trees, sites) -
 
     with LinkStore(tmp_path / "pages.sqlite") as link_store:
         crawl_hostname(
-            Config(sites=sites, save_dir=tmp_path),
+            Config(sites=sites, save_dir=tmp_path, max_pages=max_pages),
             page_store,
             link_store,
-            page_critic=FakePagePredictor(),
-            link_critic=FakeLinkPredictor(),
+            verdict_models=VerdictModels(FakePagePredictor(), FakeLinkPredictor()),
         )
 
     rows = page_store.con.execute("SELECT host FROM pages ORDER BY id").fetchall()
@@ -1096,3 +937,17 @@ def test_crawl_hostname_crawls_all_seeds_completely(tmp_path, page_store, monkey
 
     assert hosts_in_order.count("a.example") == 9
     assert hosts_in_order.count("b.example") == 9
+
+
+def test_crawl_hostname_respects_global_page_cap(tmp_path, page_store, monkeypatch):
+    host_trees = {
+        "a.example": _build_tree("a.example"),
+        "b.example": _build_tree("b.example"),
+    }
+    sites = [make_site(url=f"https://{host}/") for host in host_trees]
+
+    hosts = _run_multihost_crawl(
+        monkeypatch, page_store, tmp_path, host_trees, sites, max_pages=3
+    )
+
+    assert len(hosts) == 3

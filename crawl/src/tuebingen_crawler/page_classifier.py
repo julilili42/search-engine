@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from verdict_ml.page.features import PageVerdictInput
 
+from .extract import ParsedPage
 from .models import Language
 
 
@@ -88,30 +89,26 @@ def _relevance(score: float) -> float:
 
 def classify_page(
     url: str,
-    title: str,
-    text: str,
-    language: Language,
+    page: ParsedPage,
     *,
-    description: str = "",
-    h1: str = "",
     predictor,
 ) -> PageVerdict:
-    snippet = page_snippet(description=description, h1=h1, text=text)
+    snippet = page_snippet(description=page.description, h1=page.h1, text=page.text)
     prediction = predictor.predict(
         PageVerdictInput(
-            title=title,
+            title=page.title,
             url=url,
             display_url=_strip_scheme(url),
             # model was trained on serp snippets, so keep the page text out of snippet
-            snippet=page_snippet(description=description, h1=h1),
-            text=text,
+            snippet=page_snippet(description=page.description, h1=page.h1),
+            text=page.text,
         )
     )
     score = prediction.positive_probability
     return PageVerdict(
-        language=language,
+        language=page.language,
         relevance=_relevance(score),
-        token_count=_token_count(text),
+        token_count=_token_count(page.text),
         score=score,
         label=prediction.label,
         model=str(prediction.model_path),

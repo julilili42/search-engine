@@ -16,12 +16,8 @@ def crawl_paths(data_dir: Path) -> tuple[Path, Path, Path]:
     )
 
 
-def global_frontier_state_path(state_dir: Path) -> Path:
-    return state_dir / "state" / "global_frontier.json"
-
-
-def global_seen_state_path(state_dir: Path) -> Path:
-    return state_dir / "state" / "global_seen.json"
+def crawl_state_path(state_dir: Path) -> Path:
+    return state_dir / "state" / "crawl_state.json"
 
 
 DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "db" / "pages.sqlite"

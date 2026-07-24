@@ -2,13 +2,15 @@ from __future__ import annotations
 
 # SQLite-backed crawl stores.
 
-import json
 import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+
+from .models import FetchResult
+from .page_classifier import PageVerdict
 
 _BASE_PAGE_COLUMNS = (
     "title",
@@ -296,21 +298,11 @@ class PageStore:
         url: str,
         host: str,
         path: str | Path,
-        status_code: int | None = None,
-        content_type: str | None = None,
-        fetched_at: str | None = None,
-        crawl_depth: int | None = None,
-        language: str | None = None,
-        relevance: float | None = None,
-        token_count: int | None = None,
-        pageverdict_score: float | None = None,
-        pageverdict_label: str | None = None,
-        pageverdict_decision: str | None = None,
-        pageverdict_model: str | None = None,
-        pageverdict_snippet: str | None = None,
+        crawl_depth: int,
+        fetch_result: FetchResult,
+        verdict: PageVerdict,
     ) -> None:
         now = _now()
-        fetched_at = fetched_at or now
 
         with _DB_LOCK, self.con:
             self.con.execute(
@@ -360,20 +352,20 @@ class PageStore:
                     url,
                     host,
                     str(path),
-                    status_code,
-                    content_type,
+                    fetch_result.status_code,
+                    fetch_result.content_type,
                     crawl_depth,
-                    language,
-                    relevance,
-                    token_count,
-                    pageverdict_score,
-                    pageverdict_label,
-                    pageverdict_decision,
-                    pageverdict_model,
-                    pageverdict_snippet,
+                    verdict.language.value,
+                    verdict.relevance,
+                    verdict.token_count,
+                    verdict.score,
+                    verdict.label,
+                    verdict.decision_label,
+                    verdict.model,
+                    verdict.snippet,
                     now,
                     now,
-                    fetched_at,
+                    now,
                 ),
             )
 
@@ -391,11 +383,7 @@ class PageStore:
         language: str | None = None,
         relevance: float | None = None,
         token_count: int | None = None,
-        pageverdict_score: float | None = None,
-        pageverdict_label: str | None = None,
-        pageverdict_decision: str | None = None,
-        pageverdict_model: str | None = None,
-        pageverdict_snippet: str | None = None,
+        pageverdict: PageVerdictMetadata | None = None,
     ) -> None:
         now = _now()
         fetched_at = fetched_at or now
@@ -452,11 +440,11 @@ class PageStore:
                     language,
                     relevance,
                     token_count,
-                    pageverdict_score,
-                    pageverdict_label,
-                    pageverdict_decision,
-                    pageverdict_model,
-                    pageverdict_snippet,
+                    pageverdict.score if pageverdict else None,
+                    pageverdict.label if pageverdict else None,
+                    pageverdict.decision if pageverdict else None,
+                    pageverdict.model if pageverdict else None,
+                    pageverdict.snippet if pageverdict else None,
                     exclusion_reason,
                     now,
                     now,
@@ -700,17 +688,27 @@ class LinkStore:
         *,
         url: str,
         target_status: str,
-        status_code: int | None,
-        content_type: str | None,
-        language: str | None,
-        relevance: float | None,
-        token_count: int | None,
-        pageverdict_score: float | None,
-        pageverdict_label: str | None,
-        pageverdict_decision: str | None,
+        fetch_result: FetchResult,
         exclusion_reason: str | None,
-        fetched_at: str | None,
+        verdict: PageVerdict | None = None,
+        language: str | None = None,
+        relevance: float | None = None,
+        token_count: int | None = None,
+        pageverdict: PageVerdictMetadata | None = None,
+        fetched_at: str | None = None,
     ) -> None:
+        fetched_at = fetched_at or _now()
+        if verdict is not None:
+            language = verdict.language.value
+            relevance = verdict.relevance
+            token_count = verdict.token_count
+            pageverdict = PageVerdictMetadata(
+                score=verdict.score,
+                label=verdict.label,
+                decision=verdict.decision_label,
+                model=verdict.model,
+                snippet=verdict.snippet,
+            )
         with _DB_LOCK, self.con:
             self.con.execute(
                 """
@@ -732,176 +730,17 @@ class LinkStore:
                 """,
                 (
                     target_status,
-                    status_code,
-                    content_type,
+                    fetch_result.status_code,
+                    fetch_result.content_type,
                     language,
                     relevance,
                     token_count,
-                    pageverdict_score,
-                    pageverdict_label,
-                    pageverdict_decision,
+                    pageverdict.score if pageverdict else None,
+                    pageverdict.label if pageverdict else None,
+                    pageverdict.decision if pageverdict else None,
                     exclusion_reason,
                     fetched_at,
                     _now(),
                     url,
                 ),
             )
-
-
-class CrawlExportDB:
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = db_path
-        self.con = sqlite3.connect(self.db_path)
-        self.con.row_factory = sqlite3.Row
-
-    def close(self) -> None:
-        self.con.close()
-
-    def __enter__(self) -> "CrawlExportDB":
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self.close()
-
-    def export_pageverdict_jsonl(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        rows = self.con.execute(
-            """
-            SELECT *
-            FROM (
-                SELECT
-                    'pages' AS source_table,
-                    title,
-                    url,
-                    host,
-                    status_code,
-                    content_type,
-                    crawl_depth,
-                    language,
-                    relevance,
-                    token_count,
-                    pageverdict_score,
-                    pageverdict_label,
-                    pageverdict_decision,
-                    pageverdict_model,
-                    pageverdict_snippet,
-                    fetched_at,
-                    indexed_at,
-                    NULL AS exclusion_reason
-                FROM pages
-                WHERE pageverdict_score IS NOT NULL
-                UNION ALL
-                SELECT
-                    'rejected_pages' AS source_table,
-                    title,
-                    url,
-                    host,
-                    status_code,
-                    content_type,
-                    crawl_depth,
-                    language,
-                    relevance,
-                    token_count,
-                    pageverdict_score,
-                    pageverdict_label,
-                    pageverdict_decision,
-                    pageverdict_model,
-                    pageverdict_snippet,
-                    fetched_at,
-                    NULL AS indexed_at,
-                    exclusion_reason
-                FROM rejected_pages
-                WHERE pageverdict_score IS NOT NULL
-            )
-            ORDER BY fetched_at, url
-            """
-        ).fetchall()
-
-        with path.open("w", encoding="utf-8") as file:
-            for rank, row in enumerate(rows, start=1):
-                record = {
-                    "query": f"crawler:{row['pageverdict_decision']}",
-                    "page": None,
-                    "rank": rank,
-                    "title": row["title"],
-                    "url": row["url"],
-                    "display_url": row["host"],
-                    "snippet": row["pageverdict_snippet"],
-                    "rating": None,
-                    "label": None,
-                    "notes": "",
-                    "source": "crawler_pageverdict",
-                    "source_table": row["source_table"],
-                    "status_code": row["status_code"],
-                    "content_type": row["content_type"],
-                    "crawl_depth": row["crawl_depth"],
-                    "language": row["language"],
-                    "relevance": row["relevance"],
-                    "token_count": row["token_count"],
-                    "pageverdict_score": row["pageverdict_score"],
-                    "pageverdict_label": row["pageverdict_label"],
-                    "pageverdict_decision": row["pageverdict_decision"],
-                    "pageverdict_model": row["pageverdict_model"],
-                    "fetched_at": row["fetched_at"],
-                    "indexed_at": row["indexed_at"],
-                    "exclusion_reason": row["exclusion_reason"],
-                }
-                file.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    def export_linkverdict_jsonl(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        rows = self.con.execute(
-            """
-            SELECT *
-            FROM link_candidates
-            ORDER BY
-                ABS(COALESCE(linkverdict_score, 0.5) - 0.5),
-                target_url,
-                parent_url,
-                id
-            """
-        ).fetchall()
-
-        with path.open("w", encoding="utf-8") as file:
-            for rank, row in enumerate(rows, start=1):
-                record = {
-                    "query": "crawler:linkverdict",
-                    "page": None,
-                    "rank": rank,
-                    "parent_url": row["parent_url"],
-                    "parent_host": row["parent_host"],
-                    "parent_depth": row["parent_depth"],
-                    "parent_pageverdict_score": row["parent_pageverdict_score"],
-                    "parent_pageverdict_label": row["parent_pageverdict_label"],
-                    "parent_pageverdict_decision": row["parent_pageverdict_decision"],
-                    "parent_relevance": row["parent_relevance"],
-                    "anchor": row["anchor"],
-                    "target_url": row["target_url"],
-                    "target_host": row["target_host"],
-                    "target_depth": row["target_depth"],
-                    "raw_score": row["raw_score"],
-                    "linkverdict_score": row["linkverdict_score"],
-                    "linkverdict_label": row["linkverdict_label"],
-                    "linkverdict_model": row["linkverdict_model"],
-                    "should_enqueue": bool(row["should_enqueue"]),
-                    "selected": bool(row["selected"]),
-                    "rejection_reason": row["rejection_reason"],
-                    "target_status": row["target_status"],
-                    "target_status_code": row["target_status_code"],
-                    "target_content_type": row["target_content_type"],
-                    "target_language": row["target_language"],
-                    "target_relevance": row["target_relevance"],
-                    "target_token_count": row["target_token_count"],
-                    "target_pageverdict_score": row["target_pageverdict_score"],
-                    "target_pageverdict_label": row["target_pageverdict_label"],
-                    "target_pageverdict_decision": row["target_pageverdict_decision"],
-                    "target_exclusion_reason": row["target_exclusion_reason"],
-                    "target_fetched_at": row["target_fetched_at"],
-                    "rating": None,
-                    "label": None,
-                    "notes": "",
-                    "source": "crawler_linkverdict",
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                }
-                file.write(json.dumps(record, ensure_ascii=False) + "\n")

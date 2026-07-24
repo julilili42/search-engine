@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from tuebingen_crawler.models import Language
+from tuebingen_crawler.extract import ParsedPage
 from tuebingen_crawler.page_classifier import (
     INDEX_THRESHOLD,
     STRONG_THRESHOLD,
@@ -26,6 +27,10 @@ class FakePagePredictor:
         )
 
 
+def page(title, text, language, description="", h1=""):
+    return ParsedPage(title, language, description, h1, text)
+
+
 def test_page_snippet_prefers_description_and_h1_before_text():
     snippet = page_snippet(
         description="Official English city page.",
@@ -40,10 +45,12 @@ def test_page_snippet_prefers_description_and_h1_before_text():
 def test_classify_page_indexes_strong_positive_page():
     verdict = classify_page(
         "https://www.tuebingen.de/en/",
-        "Tübingen",
-        "English visitor information about Tübingen.",
-        Language.EN,
-        description="Official English visitor information.",
+        page(
+            "Tübingen",
+            "English visitor information about Tübingen.",
+            Language.EN,
+            description="Official English visitor information.",
+        ),
         predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
@@ -58,9 +65,7 @@ def test_classify_page_indexes_strong_positive_page():
 def test_classify_page_indexes_mid_confidence_page_cautiously():
     verdict = classify_page(
         "https://example.com/tuebingen-directory",
-        "Tübingen directory",
-        "A narrow directory page.",
-        Language.EN,
+        page("Tübingen directory", "A narrow directory page.", Language.EN),
         predictor=FakePagePredictor(INDEX_THRESHOLD),
     )
 
@@ -72,9 +77,7 @@ def test_classify_page_indexes_mid_confidence_page_cautiously():
 def test_classify_page_rejects_but_still_follows_low_score_page():
     verdict = classify_page(
         "https://example.com/tuebingen-side",
-        "Tübingen",
-        "A low-scoring page that still mentions Tübingen.",
-        Language.EN,
+        page("Tübingen", "A low-scoring page that still mentions Tübingen.", Language.EN),
         predictor=FakePagePredictor(INDEX_THRESHOLD - 0.01, "negative"),
     )
 
@@ -88,10 +91,7 @@ def test_classify_page_uses_serp_like_feature_fields():
     predictor = FakePagePredictor(0.8)
     classify_page(
         "https://www.tuebingen.de/en/",
-        "Title",
-        "Body excerpt.",
-        Language.EN,
-        description="Meta description.",
+        page("Title", "Body excerpt.", Language.EN, description="Meta description."),
         predictor=predictor,
     )
 
@@ -106,9 +106,11 @@ def test_classify_page_uses_serp_like_feature_fields():
 def test_classify_page_indexes_high_score_without_keyword_gate():
     verdict = classify_page(
         "https://www.visit-mv.com/family",
-        "Family Vacation at the Baltic Sea in Mecklenburg-Vorpommern",
-        "Mecklenburg-Vorpommern offers wide beaches along the Baltic Sea coast.",
-        Language.EN,
+        page(
+            "Family Vacation at the Baltic Sea in Mecklenburg-Vorpommern",
+            "Mecklenburg-Vorpommern offers wide beaches along the Baltic Sea coast.",
+            Language.EN,
+        ),
         predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
@@ -119,9 +121,7 @@ def test_classify_page_indexes_high_score_without_keyword_gate():
 def test_classify_page_indexes_high_score_page_with_tuebingen_in_body():
     verdict = classify_page(
         "https://example.com/old-town",
-        "Old Town",
-        "The historic old town sits on the Neckar in Tübingen.",
-        Language.EN,
+        page("Old Town", "The historic old town sits on the Neckar in Tübingen.", Language.EN),
         predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 
@@ -132,9 +132,7 @@ def test_classify_page_indexes_high_score_page_with_tuebingen_in_body():
 def test_classify_page_rejects_non_english_page():
     verdict = classify_page(
         "https://www.tuebingen.de/de/",
-        "Tübingen",
-        "Tübingen ist eine Universitätsstadt am Neckar.",
-        Language.DE,
+        page("Tübingen", "Tübingen ist eine Universitätsstadt am Neckar.", Language.DE),
         predictor=FakePagePredictor(STRONG_THRESHOLD),
     )
 

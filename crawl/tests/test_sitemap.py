@@ -3,8 +3,9 @@ import gzip
 import httpx
 
 from tuebingen_crawler.frontier import GlobalFrontier
-from tuebingen_crawler.models import CrawlState
+from tuebingen_crawler.models import Config, CrawlContext, CrawlState
 from tuebingen_crawler.sitemap import ingest_sitemaps
+from tuebingen_crawler.verdict_models import VerdictModels
 
 
 def test_sitemap_index_enqueues_same_origin_urls_once():
@@ -22,30 +23,34 @@ def test_sitemap_index_enqueues_same_origin_urls_once():
     state = CrawlState()
     frontier = GlobalFrontier(
         state,
-        request_delays={0: 0.0},
-        max_pages_per_seed={0: None},
-        max_discovered_per_seed={0: None},
+        request_delay=0.0,
+        max_pages=None,
     )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        context = CrawlContext(
+            config=Config(request_delay=0.0, request_timeout=1.0),
+            client=client,
+            state=state,
+            page_store=None,
+            link_store=None,
+            robots=None,
+            host_counts={},
+            host_reject_counts={},
+            verdict_models=VerdictModels(None, None),
+        )
         queued = ingest_sitemaps(
-            client,
+            context,
             ["https://host.test/sitemap.xml"],
             "https://host.test/seed",
-            state,
             frontier,
             0,
-            0.0,
-            1.0,
         )
         repeated = ingest_sitemaps(
-            client,
+            context,
             ["https://host.test/sitemap.xml"],
             "https://host.test/seed",
-            state,
             frontier,
             0,
-            0.0,
-            1.0,
         )
 
     lease = frontier.claim()

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .report import report_main
 from .crawl_runner import crawl_hostname
 from .storage import load_seed_toml
 from .models import Config
@@ -47,22 +45,15 @@ def run_crawl(
             config,
             page_store,
             link_store,
-            page_critic=verdict_models.page,
-            link_critic=verdict_models.link,
+            verdict_models,
         )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    args = sys.argv[1:] if argv is None else argv
-
-    if args and args[0] == "report":
-        report_main(args[1:])
-        return
-
     parser = argparse.ArgumentParser(prog="crawl")
     parser.add_argument("--seeds", type=Path, default=DEFAULT_SEED_PATH)
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
-    parsed = parser.parse_args(args)
+    parsed = parser.parse_args(argv)
     run_crawl(parsed.seeds, parsed.data_dir)
 
 

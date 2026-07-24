@@ -17,23 +17,20 @@ Run commands from the repository root.
 
 ```bash
 uv run crawl
-uv run crawl report --db data/db/pages.sqlite
 uv run crawl --seeds crawl/seeds.pilot.toml --data-dir data/pilot-20260715
 ```
 
 - Seeds live in `crawl/seeds.toml`.
-- Each `[[sites]]` entry supports `url`, `request_delay`, optional
-  `max_pages_per_seed`, `max_discovered_per_seed`, and `sitemap = true` for
-  opt-in same-origin sitemap discovery (`robots.txt`, then `/sitemap.xml`).
+- Sitemaps declared in `robots.txt` are loaded once for each seed origin.
+- All hosts use the global `Config` request delay, timeout, and retry settings.
 - Workers claim URLs from one global frontier. It picks the highest-scoring
   eligible host while allowing at most one in-flight request per host.
 - HTML is saved under `data/html/<host>/`; logs are written to
   `data/log/crawl.log`; global state is saved as
-  `data/state/global_frontier.json`, with deduplication state in
-  `data/state/global_seen.json`; page and link metadata is recorded in
+  `data/state/crawl_state.json`; page and link metadata is recorded in
   `data/db/pages.sqlite`.
-- Saved pages are capped per host, and hosts with repeated rejects and no saved
-  pages are stopped early.
+- Saved pages are capped globally and per host. Hosts with repeated rejects and
+  no saved pages are stopped early.
 
 ## Crawler Flow
 
