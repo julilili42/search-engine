@@ -26,7 +26,6 @@ from .storage import load_index, elapsed
 logger = logging.getLogger(__name__)
 
 RERANK_CANDIDATES = 100
-SEMANTIC_CANDIDATES = 100
 # BERT supplements BM25 but should not dominate it.
 ALPHA = 0.7
 TITLE_SIMILARITY_WEIGHT = 0.20
@@ -47,6 +46,9 @@ def search_index(
     context_size: int = 20,
     doc_embeddings: PassageEmbeddings | np.ndarray | None = None,
     category_axes: tuple[np.ndarray | None, np.ndarray | None] | np.ndarray | None = None,
+    *,
+    use_proximity: bool = True,
+    use_semantic: bool = True,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -65,12 +67,13 @@ def search_index(
             scores[posting.doc_index] = scores.get(posting.doc_index, 0.0) + posting.score
             term_positions.setdefault(posting.doc_index, {})[term] = posting.positions
 
-    for doc_index, doc_term_positions in term_positions.items():
-        scores[doc_index] += _proximity_bonus(doc_term_positions)
+    if use_proximity:
+        for doc_index, doc_term_positions in term_positions.items():
+            scores[doc_index] += _proximity_bonus(doc_term_positions)
 
     embedding_scores: dict[int, float] = {}
     document_embeddings: np.ndarray | None = None
-    if doc_embeddings is not None:
+    if doc_embeddings is not None and use_semantic:
         passage_embeddings = _as_passage_embeddings(doc_embeddings)
         if (
             len(passage_embeddings.doc_slices) != len(index.documents)
@@ -87,22 +90,8 @@ def search_index(
                 scores.items(),
                 key=lambda item: item[1],
             )
-            semantic = heapq.nlargest(
-                max(top_n, SEMANTIC_CANDIDATES),
-                (
-                    (doc_index, float(semantic_scores[doc_index]))
-                    for doc_index, passage_slice in enumerate(passage_embeddings.doc_slices)
-                    if passage_slice.start != passage_slice.stop
-                ),
-                key=lambda item: item[1],
-            )
-            candidate_ids = {doc_index for doc_index, _ in lexical + semantic}
-            candidates = [
-                (doc_index, scores.get(doc_index, 0.0))
-                for doc_index in sorted(candidate_ids)
-            ]
             reranked = _rerank(
-                candidates,
+                lexical,
                 passage_embeddings,
                 query_embedding,
                 semantic_scores=semantic_scores,

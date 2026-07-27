@@ -85,9 +85,11 @@ def test_search_boosts_nearby_query_terms(tmp_path):
     )
 
     results = search_index(index, "alpha beta", top_n=2)
+    without_proximity = search_index(index, "alpha beta", top_n=2, use_proximity=False)
 
     assert results[0].path == close_page
     assert results[0].score > results[1].score
+    assert without_proximity[0].score == without_proximity[1].score
 
 
 def test_proximity_bonus_requires_all_query_terms():
@@ -186,10 +188,14 @@ def test_search_index_reports_embedding_score(tmp_path, monkeypatch):
     monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))
 
     results = search_index(index, "apple", top_n=10, doc_embeddings=doc_embeddings)
+    lexical_results = search_index(
+        index, "apple", top_n=10, doc_embeddings=doc_embeddings, use_semantic=False
+    )
 
     scores = {result.url: result.embedding_score for result in results}
     assert scores["https://a.test"] == pytest.approx(1.0)
     assert scores["https://b.test"] == pytest.approx(0.0)
+    assert all(result.embedding_score is None for result in lexical_results)
 
 
 def test_search_index_embedding_score_is_none_without_embeddings(tmp_path):
@@ -359,7 +365,7 @@ def test_semantic_score_combines_title_best_and_top_passages():
     assert np.allclose(scores, [0.925, 0.64])
 
 
-def test_hybrid_search_retrieves_semantic_only_document(tmp_path, monkeypatch):
+def test_semantic_reranking_does_not_add_candidates(tmp_path, monkeypatch):
     import numpy as np
 
     from tuebingen_search.embeddings import PassageEmbeddings
@@ -391,10 +397,6 @@ def test_hybrid_search_retrieves_semantic_only_document(tmp_path, monkeypatch):
         lambda texts: np.array([[0.0, 1.0]], dtype=np.float32),
     )
 
-    # 'harvest' matches no document lexically, so the semantic-only page can only be
-    # found via the hybrid semantic candidates (independent of the lexical/semantic blend)
-    results = search_index(index, 'harvest', top_n=1, doc_embeddings=embeddings)
+    results = search_index(index, 'orchard', top_n=1, doc_embeddings=embeddings)
 
-    assert [result.path for result in results] == [semantic_page]
-    # No lexical positions exist, so semantic-only snippets start at the document beginning.
-    assert results[0].snippet == 'fruit guide'
+    assert [result.path for result in results] == [lexical_page]
