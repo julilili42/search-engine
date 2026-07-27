@@ -1,7 +1,12 @@
 import pytest
 
 import tuebingen_crawler.verdict_models as verdict_models
+from tuebingen_crawler.page_classifier import INDEX_THRESHOLD
 from tuebingen_crawler.verdict_models import load_verdict_models
+
+
+def test_page_threshold_matches_deployed_artifact():
+    assert load_verdict_models().page.positive_threshold == INDEX_THRESHOLD
 
 
 def test_load_verdict_models_requires_page_artifact(tmp_path, monkeypatch):
