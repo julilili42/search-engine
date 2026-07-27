@@ -5,6 +5,7 @@ search/index.json
 !/data/README.md
 /data2
 /archive
+verdict-ml/artifacts/old/
 .DS_Store
 __pycache__/
 .venv/
@@ -14,10 +15,8 @@ __pycache__/
 .claude
 results.tsv
 runs/
-!benchmark/runs/
-!benchmark/runs/**
-benchmark/crawl/metrics/
-benchmark/crawl/monitor.out
+benchmark/output/*/results.json
+benchmark/output/judging_pool.tsv
 
 # client (React/Vite)
 node_modules/
@@ -27,16 +26,16 @@ client/.tmp/
 *.local
 *.log
 
-# LaTeX build artifacts (docs/report)
-docs/report/*.aux
-docs/report/*.bbl
-docs/report/*.bcf
-docs/report/*.blg
-docs/report/*.fdb_latexmk
-docs/report/*.fls
-docs/report/*.log
-docs/report/*.out
-docs/report/*.run.xml
-docs/report/*.synctex.gz
-docs/report/*.toc
-docs/report/report.pdf
+# LaTeX build artifacts
+docs/report*/*.aux
+docs/report*/*.bbl
+docs/report*/*.bcf
+docs/report*/*.blg
+docs/report*/*.fdb_latexmk
+docs/report*/*.fls
+docs/report*/*.log
+docs/report*/*.out
+docs/report*/*.run.xml
+docs/report*/*.synctex.gz
+docs/report*/*.toc
+docs/report*/report.pdf
