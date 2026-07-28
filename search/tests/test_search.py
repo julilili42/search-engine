@@ -320,7 +320,7 @@ def test_rerank_blends_lexical_and_semantic_scores():
     )
     query_embedding = np.array([0.0, 1.0])
 
-    reranked = _rerank(candidates, doc_embeddings, query_embedding, alpha=0.5)
+    reranked = _rerank(candidates, doc_embeddings, query_embedding, alpha=0.5, beta=0.5)
 
     assert [doc_index for doc_index, _, _ in reranked] == [1, 0, 2]
     scores = [score for _, score, _ in reranked]
@@ -328,6 +328,43 @@ def test_rerank_blends_lexical_and_semantic_scores():
     cosines = {doc_index: cosine for doc_index, _, cosine in reranked}
     assert cosines[1] == pytest.approx(1.0)
     assert cosines[0] == pytest.approx(0.0)
+
+
+def test_rerank_normalizes_semantic_scores():
+    import numpy as np
+
+    from tuebingen_search.search import _rerank
+
+    candidates = [(0, 2.0), (1, 1.0)]
+    semantic_scores = np.array([0.4, 0.2])
+    reranked = _rerank(
+        candidates,
+        np.empty((2, 1)),
+        np.empty(1),
+        alpha=0.0,
+        beta=1.0,
+        semantic_scores=semantic_scores,
+    )
+
+    assert [(doc, score) for doc, score, _ in reranked] == [(0, 1.0), (1, 0.0)]
+    tied = _rerank(
+        candidates,
+        np.empty((2, 1)),
+        np.empty(1),
+        alpha=0.0,
+        beta=1.0,
+        semantic_scores=np.array([0.4, 0.4]),
+    )
+    assert all(score == 0.0 for _, score, _ in tied)
+
+
+def test_rerank_rejects_invalid_weights():
+    import numpy as np
+
+    from tuebingen_search.search import _rerank
+
+    with pytest.raises(ValueError, match="sum to 1"):
+        _rerank([(0, 1.0)], np.array([[1.0]]), np.array([1.0]), alpha=0.7, beta=0.4)
 
 
 def test_best_passage_score_uses_maximum_similarity():

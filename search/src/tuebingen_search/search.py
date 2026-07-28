@@ -26,8 +26,8 @@ from .storage import load_index, elapsed
 logger = logging.getLogger(__name__)
 
 RERANK_CANDIDATES = 100
-# BERT supplements BM25 but should not dominate it.
-ALPHA = 0.7
+ALPHA = 0.4
+BETA = 0.6
 TITLE_SIMILARITY_WEIGHT = 0.20
 BEST_PASSAGE_WEIGHT = 0.65
 TOP_PASSAGES_MEAN_WEIGHT = 0.15
@@ -49,6 +49,8 @@ def search_index(
     *,
     use_proximity: bool = True,
     use_semantic: bool = True,
+    alpha: float = ALPHA,
+    beta: float = BETA,
 ) -> list[SearchResult]:
     start = time.perf_counter()
     query_terms = set(tokenize(query))
@@ -95,6 +97,8 @@ def search_index(
                 passage_embeddings,
                 query_embedding,
                 semantic_scores=semantic_scores,
+                alpha=alpha,
+                beta=beta,
             )[:top_n]
             ranked_results = [(doc_index, score) for doc_index, score, _ in reranked]
             embedding_scores = {doc_index: cosine for doc_index, _, cosine in reranked}
@@ -186,10 +190,13 @@ def _rerank(
     doc_embeddings: PassageEmbeddings | np.ndarray,
     query_embedding: np.ndarray,
     alpha: float = ALPHA,
+    beta: float = BETA,
     semantic_scores: np.ndarray | None = None,
 ) -> list[tuple[int, float, float]]:
     if not candidates:
         return []
+    if alpha < 0 or beta < 0 or not np.isclose(alpha + beta, 1.0):
+        raise ValueError("alpha and beta must be non-negative and sum to 1")
     doc_indices = [doc_index for doc_index, _ in candidates]
     lexical = np.array([score for _, score in candidates])
 
@@ -200,8 +207,14 @@ def _rerank(
             _as_passage_embeddings(doc_embeddings), query_embedding
         )
     cosine = semantic_scores[doc_indices]
+    semantic_spread = cosine.max() - cosine.min()
+    semantic_norm = (
+        (cosine - cosine.min()) / semantic_spread
+        if semantic_spread > 0
+        else np.zeros_like(cosine)
+    )
 
-    blended = alpha * lexical_norm + (1 - alpha) * cosine
+    blended = alpha * lexical_norm + beta * semantic_norm
     order = np.argsort(-blended)
     return [(doc_indices[i], float(blended[i]), float(cosine[i])) for i in order]
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from .embeddings import embed_texts, load_embeddings
-from .search import SearchResult, load_index, search_index
+from .search import ALPHA, BETA, SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
 
 
@@ -41,7 +42,11 @@ def search_api(
     cat_y: str | None = Query(None, min_length=1),
     proximity: bool = Query(True),
     semantic: bool = Query(True),
+    alpha: float = Query(ALPHA, ge=0, le=1),
+    beta: float = Query(BETA, ge=0, le=1),
 ):
+    if not math.isclose(alpha + beta, 1.0):
+        raise HTTPException(422, "alpha and beta must sum to 1")
     category_axes = None
     if app.state.doc_embeddings is not None and (cat_x or cat_y):
         labels = [label for label in (cat_x, cat_y) if label]
@@ -56,6 +61,8 @@ def search_api(
         category_axes,
         use_proximity=proximity,
         use_semantic=semantic,
+        alpha=alpha,
+        beta=beta,
     )
 
 
