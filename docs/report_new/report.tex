@@ -54,9 +54,9 @@ We present an end-to-end search engine for English web content related to
 Tübingen. The system combines a resumable focused crawler, a self-implemented
 BM25F first stage, semantic second-stage re-ranking, batch retrieval, and an
 interactive result interface. In a diagnostic 20-query ablation, semantic
-re-ranking improves nDCG@10 from .7038 to .7342, while the evaluated proximity
-bonus does not improve effectiveness. The final retrieval configuration
-therefore uses BM25F followed by semantic re-ranking.
+re-ranking outperforms BM25F and the evaluated proximity bonus does not improve
+effectiveness. After configuration was frozen, re-ranking improved nDCG@10
+from 0.6078 to 0.6690 on a separate 10-query test set.
 \end{abstract}
 
 \section{Introduction}
@@ -88,24 +88,27 @@ with at most one active request per host. Host cooldowns, page caps, and early
 stopping after repeated rejects prevent individual domains from dominating the
 collection.
 Separately, Serper, a Google Search results API, was used to discover pages
-for offline \textsc{PageVerdict} labeling; it is not part of the runtime crawl
-loop \citep{serper}.
+for offline \textsc{PageVerdict} labeling \citep{serper}.
 
 \subsection{Learned Focus Control}
-\textsc{LinkVerdict} prioritizes discovered links before fetching, whereas
-\textsc{PageVerdict} decides whether a fetched page enters the collection.
-Initial experiments used fixed heuristics. Qualitative inspection suggested
-that these rules were too rigid for the varied links and content relevant to
-Tübingen, motivating learned models for both decisions.
-Figure~\ref{fig:verdict-training} summarizes their offline training, and
-Figure~\ref{fig:crawler-runtime} shows their roles in the crawl loop.
-Table~\ref{tab:verdict-benchmark} reports their human-label test performance.
-For \textsc{PageVerdict}, Qwen~2.5:7B labels provide weak supervision alongside
-human labels; \textsc{LinkVerdict} uses human labels only because qualitative
-experiments with the more limited link context were less reliable. The
-manually labeled, host-disjoint PageVerdict comparison set contains 147 hosts
-and deliberately emphasizes model disagreements. In Table~\ref{tab:verdict-benchmark},
-Q+H denotes Qwen plus human training labels and H denotes human labels only.
+\textsc{PageVerdict} evaluates fetched pages, while \textsc{LinkVerdict}
+prioritizes the links extracted from them. Both use word- and character-level
+TF--IDF with class-balanced logistic regression. \textsc{PageVerdict} uses the
+title, URL, metadata snippet, and visible page text. \textsc{LinkVerdict} uses
+the anchor text, target and parent URLs, crawl depth, and the parent page's
+\textsc{PageVerdict} signal. Data are split by destination host into disjoint
+training, validation, and test sets. Five-fold grouped cross-validation selects
+the regularization strength, and decision thresholds are selected on the
+validation set.
+
+Figure~\ref{fig:verdict-training} summarizes the offline training, and
+Figure~\ref{fig:crawler-runtime} shows the crawl loop. For
+\textsc{PageVerdict}, Qwen~2.5:7B labels provide weak supervision alongside
+human labels. \textsc{LinkVerdict} uses human labels only because qualitative
+inspection indicated that Qwen's judgments were less reliable with the limited
+link context. Table~\ref{tab:verdict-benchmark}
+reports performance on manually labeled test sets of 147 \textsc{PageVerdict}
+and 546 \textsc{LinkVerdict} examples.
 
 \begin{figure}[t]
   \centering
@@ -126,14 +129,14 @@ Q+H denotes Qwen plus human training labels and H denotes human labels only.
   ]
     \node[box, fill=TUdark!8] (page-samples) {Serper +\\crawl pages};
     \node[box, fill=TUgold!12, right=of page-samples] (page-labels)
-      {Qwen 2.5:7B +\\human labels};
+      {Qwen + human\\($n=2{,}538$)};
     \node[box, fill=TUblue!10, right=of page-labels] (page-model)
       {\textsc{PageVerdict}};
 
     \node[box, fill=TUdark!8, below=of page-samples] (link-samples)
       {Crawler link\\samples};
     \node[box, fill=TUgold!12, right=of link-samples] (link-labels)
-      {Human labels\\($n=2{,}037$)};
+      {Human only\\($n=2{,}037$)};
     \node[box, fill=TUblue!10, right=of link-labels] (link-model)
       {\textsc{LinkVerdict}};
 
@@ -221,7 +224,8 @@ filtered a substantial share of the explored content.
 
 \begin{table}[t]
   \centering
-  \caption{Performance on manually labeled, host-disjoint test sets.}
+  \caption{Performance on human-labeled test sets. Q and H denote
+  Qwen~2.5:7B and human training labels, respectively.}
   \label{tab:verdict-benchmark}
   \small
   \setlength{\tabcolsep}{3pt}
@@ -229,9 +233,9 @@ filtered a substantial share of the explored content.
     \toprule
     Model & $n$ & Bal.\ Acc. & F1 & ROC--AUC & AP \\
     \midrule
-    Page (Q+H) & 147 & .692 & .709 & .774 & .720 \\
-    Page (H) & 147 & .624 & .599 & .719 & .730 \\
-    Link (H) & 546 & .746 & .629 & .822 & .627 \\
+    Page (Q+H) & 147 & 0.692 & 0.709 & 0.774 & 0.720 \\
+    Page (H) & 147 & 0.624 & 0.599 & 0.719 & 0.730 \\
+    Link (H) & 546 & 0.746 & 0.629 & 0.822 & 0.627 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -242,7 +246,10 @@ filtered a substantial share of the explored content.
 Text is lowercased and split into alphanumeric tokens, excluding single-character
 tokens and English stopwords. The inverted index covers body,
 title, and URL fields and stores body positions for snippets and proximity
-scoring. For term $t$, document $d$, and fields $f$, BM25F computes
+scoring. It is serialized with MessagePack. On the complete 10,027-document
+index, MessagePack was 37\% smaller than compact JSON (57.4 vs.\ 91.6\,MB) and
+had a 2.35-times lower median deserialization time over 20 runs (388 vs.\
+910\,ms). For term $t$, document $d$, and fields $f$, BM25F computes
 \[
 \tilde f_{t,d}=\sum_f w_f
 \frac{f_{t,d,f}}{1-b+b\,|d_f|/\overline{|d_f|}},
@@ -259,7 +266,7 @@ For documents matching at least two distinct query terms, we evaluate a
 proximity bonus of $0.25/(1+g)$, where $g$ is the extra gap in the shortest
 matching body window. This deliberately weak signal is related to prior
 proximity extensions of Okapi scoring \citep{rasolofo2003}. Because the ablation
-in Table~\ref{tab:retrieval-ablation} shows no effectiveness gain, the bonus is
+in Table~\ref{tab:retrieval-evaluation} shows no effectiveness gain, the bonus is
 not used in the selected configuration.
 
 \subsection{Semantic Retrieval and Fusion}
@@ -280,94 +287,103 @@ s_{\mathrm{sem}}(d,q)={}&0.20\cos(q,t_d)\\
 Semantic evidence is computed only for the 100 BM25F candidates. The final
 score is
 \[
-s_{\mathrm{final}}(d,q)=0.7\,\hat{s}_{\mathrm{BM25F}}(d,q)
-  +0.3\,s_{\mathrm{sem}}(d,q),
+s_{\mathrm{final}}(d,q)=\alpha\,\hat{s}_{\mathrm{BM25F}}(d,q)
+  +\beta\,\hat{s}_{\mathrm{sem}}(d,q),
 \]
-where $\hat{s}_{\mathrm{BM25F}}$ is min--max normalized. We tested mixture
-weights in increments of 0.1 and selected 0.7/0.3 because they achieved the
-highest nDCG@10.
+where $\hat{s}_{\mathrm{BM25F}},\hat{s}_{\mathrm{sem}}\in[0,1]$ are obtained
+by independently min--max normalizing both candidate score vectors. With
+non-negative $\alpha+\beta=1$, $s_{\mathrm{final}}\in[0,1]$. We tested mixture
+weights in increments of 0.1 on the development queries and selected
+$\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10.
 
 \section{Evaluation}
-To select the final retrieval configuration, we compare BM25F with proximity
-scoring and semantic re-ranking in a controlled ablation. All variants use the
-same frozen index and 20-query set. The queries were selected manually to cover
-broad topics, named entities, and specific tasks across tourism, university
-life, mobility, recreation, and local services. We pool the top 20 results from
-all four variants, producing 466 unique query--URL pairs, and grade them from 0
-(irrelevant) to 3 (highly relevant). The primary metric is nDCG@10; nDCG@20,
-MRR@10, and warmed API latency provide complementary evidence.
+We first use 20 development queries covering broad topics, named entities, and
+specific tasks to select the retrieval design. The pool unites the top 20 from
+the four ablation variants and all eleven fusion weights. A single assessor
+grades each query--URL pair from 0 (irrelevant) to 3 (highly relevant) using
+URL, title, and snippet. We select the design and
+$\alpha/\beta$ by nDCG@10, then freeze them. Before retrieval, we define ten
+new test queries covering distinct local and informational needs absent from
+development. Their BM25F and selected-system pools yield 267 further judgments;
+the development pool contains 715. nDCG@20, MRR@10, and warmed API latency
+provide complementary evidence.
 
 \begin{table*}[t]
 \centering
-\caption{Retrieval ablation on 20 queries. All variants use BM25F top-100
-candidates; semantic scoring only re-ranks those candidates. The pooled top 20
-contains 466 single-assessor judgments with complete judged coverage.
-Latency is the mean warmed API response time.}
-\label{tab:retrieval-ablation}
+\caption{Development ablation and frozen test results. Semantic scoring
+re-ranks BM25F's top 100; latency is mean warmed API time.}
+\label{tab:retrieval-evaluation}
 \small
-\setlength{\tabcolsep}{9pt}
-\begin{tabular}{@{}lccrrrr@{}}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}llccrrrr@{}}
 \toprule
-Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
+Set & Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
 \midrule
-BM25F                & no  & no  & .7038 & .8103 & .9500 &  1.90 \\
-BM25F + proximity    & yes & no  & .6958 & .8002 & .9500 & 18.13 \\
-BM25F + semantic     & no  & yes & \textbf{.7342} & \textbf{.8441} &
-  \textbf{.9750} & 64.64 \\
-Full                 & yes & yes & .7183 & .8395 & \textbf{.9750} & 64.77 \\
+Dev. (20) & BM25F    & no  & no  & 0.5727 & 0.6023 & \textbf{0.9500} &  1.94 \\
+ & BM25F + proximity & yes & no  & 0.5636 & 0.5925 & \textbf{0.9500} &  4.73 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.6441} & \textbf{0.7058} &
+  0.9375 & 65.89 \\
+ & Full              & yes & yes & 0.6345 & 0.6982 & 0.9375 & 68.08 \\
+\midrule
+Test (10) & BM25F    & no  & no  & 0.6078 & 0.6601 & 0.8111 & 2.06 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.6690} & \textbf{0.7677} &
+  \textbf{0.8750} & 67.62 \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-Semantic re-ranking improves nDCG@10 by .0304 over BM25F, whereas proximity
+Semantic re-ranking improves nDCG@10 by 0.0714 over BM25F, whereas proximity
 reduces effectiveness both alone and in the full system. We therefore select
-BM25F with semantic re-ranking as the final configuration.
+BM25F with semantic re-ranking and $\alpha=0.4,\beta=0.6$.
+Table~\ref{tab:retrieval-evaluation} also reports the subsequent frozen test
+evaluation.
 
 \section{Result Presentation}
 The presentation aims to expose retrieved URLs in a more creative form than a
 conventional result list. Inspired by the Internet as a network of
 interconnected networks, the interface maps results to stellar constellations
 through which the user can navigate as a galaxy. The web client presents ten
-clickable result cards alongside ten result stars. Star size and color encode
-the result-set min--max-normalized final score, while vertical position follows
-rank by default. Users may define semantic \(x\)- and \(y\)-axes through
-category labels, onto which the server projects centered and bounded document
-embeddings. Overlapping stars fan out on hover, and pagination pans the camera
-between result constellations. The spatial view augments the ranked cards
-without altering retrieval order.
+clickable result cards alongside ten result stars
+(Figure~\ref{fig:interface}). Star size and color encode the result-set
+min--max-normalized final score, while vertical position follows rank by
+default. Users may define semantic \(x\)- and \(y\)-axes through category
+labels, onto which the server projects centered and bounded document
+embeddings. In Figure~\ref{fig:interface}(b), \emph{river} and \emph{city}
+organize this projection, separating results about the Neckar river from
+geographic entities such as Neckar-Alb. Overlapping stars fan out on hover,
+and pagination pans the camera between result constellations. The spatial view
+augments the ranked cards without altering retrieval order.
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{img/start_screen.png}\\[-1mm]
-  {\scriptsize (a) Query entry.}\\[2mm]
-  \includegraphics[width=\textwidth]{img/result_screen.png}\\[-1mm]
-  {\scriptsize (b) Ranked cards and interactive result constellation.}
-  \caption{Implemented search interface.}
+  \includegraphics[height=.34\textheight]{img/result_list.png}\hfill
+  \includegraphics[height=.34\textheight]{img/star_constellation.png}\\[-1mm]
+  {\scriptsize (a) Ranked result list.\hfill
+  (b) Category-based star constellation.}
+  \caption{Implemented search interface with ranked cards and a semantic
+  constellation.}
   \label{fig:interface}
 \end{figure*}
 
 \section{Limitations}
-The ablation is diagnostic rather than an unbiased estimate of
-generalization. Its relevance grades come from one Codex assessor using
-retrieved metadata, and the judgment pool contains only results produced by the
-four evaluated variants. The query set is small and is not the official
-five-query course evaluation. The observed gains therefore justify an
-engineering choice within this fixed setup but do not establish statistical
-significance or superiority on unseen queries.
+The single-assessor grades use retrieved metadata, and both pools contain only
+results produced by the compared systems. The independent test
+avoids tuning on reported results, but ten queries remain too few to establish
+statistical significance or superiority beyond this collection. It is also
+separate from the official five-query course evaluation.
 
 The verdict benchmarks use one labeling policy and relatively small test sets,
-including the 147-host \textsc{PageVerdict} comparison set. Their results
+including the 147-example \textsc{PageVerdict} comparison set. Their results
 therefore support the crawler design but do not establish performance on other
 domains.
 
 \balance
 \section{Conclusion}
 The implemented system covers the path from focused crawling to batch and
-interactive retrieval. The controlled ablation supports semantic re-ranking of
-BM25F candidates as the final ranking design: it yields the strongest nDCG@10
-and nDCG@20 while remaining far below the required one-minute query budget.
-The official pooled course evaluation will provide the final external measure
-of system effectiveness.
+interactive retrieval. The development ablation selects semantic re-ranking of
+BM25F candidates, and the separate test improves all three reported metrics
+on these queries. The official pooled course evaluation will provide the final
+external measure of effectiveness.
 
 \bibliography{bibliography}
 \bibliographystyle{unsrtnat}
