@@ -229,7 +229,7 @@ function App() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           {searched && !loading && !error && results.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/50">
               <SearchX className="size-7" />
@@ -238,21 +238,21 @@ function App() {
           )}
 
           {showList && (
-            <div className="grid h-full grid-rows-[repeat(10,minmax(0,1fr))] gap-2">
+            <div className="grid gap-2">
               {pagedResults.map((result) => (
               <a
                 key={`${result.rank}-${result.path}`}
                 href={result.url ?? undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex min-h-0 flex-col justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
+                className="group flex flex-col justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
               >
-                <div className="flex items-center gap-1.5 truncate text-[11px] text-white/45">
+                <div className="flex items-start gap-1.5 text-[11px] text-white/45">
                   <span className="text-white/35">{result.rank}.</span>
-                  {displayUrl(result)}
+                  <span className="min-w-0 break-all">{displayUrl(result)}</span>
                   <ExternalLink className="size-3 shrink-0 text-white/30" />
                 </div>
-                <h2 className="truncate text-sm font-medium text-white/90 group-hover:text-white group-hover:underline">
+                <h2 className="break-words text-sm font-medium text-white/90 group-hover:text-white group-hover:underline">
                   {displayTitle(result)}
                 </h2>
                 <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-white/55">

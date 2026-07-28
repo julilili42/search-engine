@@ -15,6 +15,7 @@ type ResultStarsProps = {
 const AXIS_SPREAD = 7
 const RANK_X_SPREAD = 4
 const RANK_SPREAD = 6
+const DEFAULT_X_OFFSET = 2.5
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 // distance below which two stars are considered visually overlapping and
 // therefore clustered together (kept separate from HOVER_RADIUS below — see
@@ -102,18 +103,29 @@ function screenDistance(a: [number, number, number], b: [number, number, number]
 
 function layoutStars(results: SearchResult[], hasCategoryX: boolean, hasCategoryY: boolean) {
   const toUnit = normalize(results.map(relevanceOf))
+  const pageXMeans = Array.from(
+    { length: Math.ceil(results.length / PAGE_SIZE) },
+    (_, page) => {
+      const seeds = results
+        .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+        .map((_, index) => seeded(page * PAGE_SIZE + index))
+      return seeds.reduce((sum, value) => sum + value, 0) / seeds.length
+    },
+  )
 
   const placed = results.map((result, index) => {
     const unit = toUnit(relevanceOf(result))
-    const pageX = Math.floor(index / PAGE_SIZE) * PAGE_SPACING
+    const page = Math.floor(index / PAGE_SIZE)
+    const pageX = page * PAGE_SPACING
     const pageLocalIndex = index % PAGE_SIZE
-    const rankY = PAGE_SIZE > 1 ? 1 - (2 * pageLocalIndex) / (PAGE_SIZE - 1) : 0
+    const pageLength = Math.min(PAGE_SIZE, results.length - page * PAGE_SIZE)
+    const rankY = pageLength > 1 ? 1 - (2 * pageLocalIndex) / (pageLength - 1) : 0
     // Without a category, the ranking itself defines the map: high ranks sit
     // at the top and deterministic X offsets keep them visibly separate.
     const x = pageX + (
       hasCategoryX && Number.isFinite(result.embedding_x)
         ? result.embedding_x! * AXIS_SPREAD
-        : seeded(index) * RANK_X_SPREAD
+        : DEFAULT_X_OFFSET + (seeded(index) - pageXMeans[page]) * RANK_X_SPREAD
     )
     const y = hasCategoryY && Number.isFinite(result.embedding_y)
       ? result.embedding_y! * AXIS_SPREAD
