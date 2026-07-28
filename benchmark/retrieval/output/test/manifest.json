@@ -1,0 +1,20 @@
+{
+  "alpha": 0.4,
+  "beta": 0.6,
+  "embeddings_sha256": "8ba21aaef30f037d695c7aa23bb6d5c62517fef0fff6c57002dfb40a6d834ca7",
+  "index_sha256": "72092089d5e7d60af4295e7088ac2af82baef58d0f7fb30c5692b4c700a86a3b",
+  "pool_depth": 20,
+  "queries_sha256": "248261a7c07206c9a70ecd482c6329300931d51b3b719eedb1cf7498c14d3fa3",
+  "rerank_candidates": 100,
+  "top_n": 100,
+  "variants": {
+    "bm25f": {
+      "use_proximity": false,
+      "use_semantic": false
+    },
+    "selected": {
+      "use_proximity": false,
+      "use_semantic": true
+    }
+  }
+}

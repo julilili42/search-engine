@@ -1308,7 +1308,7 @@ wheels = [
 [[package]]
 name = "retrieval-benchmark"
 version = "0.1.0"
-source = { editable = "benchmark" }
+source = { editable = "benchmark/retrieval" }
 dependencies = [
     { name = "tuebingen-search" },
 ]

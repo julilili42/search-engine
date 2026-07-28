@@ -2,6 +2,7 @@ import pytest
 
 from retrieval_benchmark.extract import normalize_url, read_qrels, read_queries
 from retrieval_benchmark.metrics import dcg, judged_coverage, ndcg
+from retrieval_benchmark.cli import weight_pairs
 
 
 def test_normalize_url_ignores_trailing_slash_and_fragment():
@@ -31,3 +32,12 @@ def test_input_files_reject_ambiguous_data(tmp_path):
         read_queries(queries)
     with pytest.raises(ValueError, match="Invalid rating"):
         read_qrels(qrels)
+
+
+def test_weight_sweep_covers_all_tenths():
+    pairs = weight_pairs()
+
+    assert len(pairs) == 11
+    assert pairs[0] == (0.0, 1.0)
+    assert pairs[-1] == (1.0, 0.0)
+    assert all(alpha + beta == pytest.approx(1.0) for alpha, beta in pairs)

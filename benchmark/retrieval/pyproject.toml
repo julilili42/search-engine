@@ -7,6 +7,9 @@ dependencies = [
     "tuebingen-search",
 ]
 
+[project.scripts]
+retrieval-benchmark = "retrieval_benchmark.cli:main"
+
 [tool.uv.sources]
 tuebingen-search = { workspace = true }
 

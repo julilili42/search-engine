@@ -15,8 +15,10 @@ __pycache__/
 .claude
 results.tsv
 runs/
-benchmark/output/*/results.json
-benchmark/output/judging_pool.tsv
+judging_pool.tsv
+unjudged.tsv
+benchmark/retrieval/output/*/results.json
+benchmark/index_storage/output/
 
 # client (React/Vite)
 node_modules/

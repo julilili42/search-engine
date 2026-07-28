@@ -56,6 +56,8 @@ def search_api_results(
     *,
     use_proximity: bool = True,
     use_semantic: bool = True,
+    alpha: float = 0.7,
+    beta: float = 0.3,
 ) -> tuple[dict[int, list[dict[str, object]]], list[float]]:
     from fastapi.testclient import TestClient
     from tuebingen_search.api import app
@@ -75,6 +77,8 @@ def search_api_results(
                         "top_n": top_n,
                         "proximity": use_proximity,
                         "semantic": use_semantic,
+                        "alpha": alpha,
+                        "beta": beta,
                     },
                 ).raise_for_status()
             for query_id, query in queries.items():
@@ -86,6 +90,8 @@ def search_api_results(
                         "top_n": top_n,
                         "proximity": use_proximity,
                         "semantic": use_semantic,
+                        "alpha": alpha,
+                        "beta": beta,
                     },
                 )
                 latencies.append((time.perf_counter() - start) * 1000)
