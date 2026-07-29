@@ -15,6 +15,7 @@ export default defineConfig({
     // Forward API calls to the FastAPI backend so we avoid CORS in dev.
     proxy: {
       "/search": "http://127.0.0.1:8000",
+      "/batch": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",
     },
   },

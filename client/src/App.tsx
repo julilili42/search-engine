@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight, FileSpreadsheet, Download, X } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
 import { PAGE_SIZE } from "@/galaxy/ResultStars"
@@ -14,6 +14,22 @@ const MIN_WARP_MS = 1750
 // right/left is just a camera pan over already-fetched stars, not a re-fetch
 const RESULTS_FETCH_COUNT = PAGE_SIZE * 3
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function batchFormatError(data: string) {
+  const ids = new Set<string>()
+  const lines = data.split(/\r?\n/)
+  if (!lines.some((line) => line.trim())) return "Paste at least one query."
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue
+    const [id, query, ...extra] = line.split("\t")
+    if (!id || !query || extra.length) return `Line ${index + 1}: expected ID, tab and query.`
+    if (!/^\d+$/.test(id.trim())) return `Line ${index + 1}: ID must be a number.`
+    if (!query.trim()) return `Line ${index + 1}: query is empty.`
+    if (ids.has(id.trim())) return `Line ${index + 1}: duplicate ID ${id.trim()}.`
+    ids.add(id.trim())
+  }
+  return null
+}
 
 function displayUrl(result: SearchResult) {
   if (!result.url) return "local file"
@@ -47,6 +63,10 @@ function App() {
   const [flashNonce, setFlashNonce] = useState(0)
   const [categoryX, setCategoryX] = useState("")
   const [categoryY, setCategoryY] = useState("")
+  const [batchText, setBatchText] = useState("")
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const batchDialog = useRef<HTMLDialogElement>(null)
   const prevPhase = useRef<Phase>("idle")
   const phaseRef = useRef<Phase>("idle")
   const categoryRequest = useRef(0)
@@ -136,10 +156,41 @@ function App() {
     setPage(0)
   }
 
+  async function downloadBatch() {
+    if (batchValidationError || batchLoading) {
+      setBatchError(batchValidationError)
+      return
+    }
+    setBatchLoading(true)
+    setBatchError(null)
+    try {
+      const response = await fetch("/batch", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: batchText,
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.detail || `Batch search failed (HTTP ${response.status})`)
+      }
+      const url = URL.createObjectURL(await response.blob())
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "results.tsv"
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : "Batch search failed")
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
   const totalPages = Math.ceil(results.length / PAGE_SIZE)
   const pagedResults = results.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const hasCategoryX = Boolean(categoryX.trim())
   const hasCategoryY = Boolean(categoryY.trim())
+  const batchValidationError = batchFormatError(batchText)
 
   function goToPage(delta: number) {
     setPage((p) => Math.min(Math.max(p + delta, 0), totalPages - 1))
@@ -199,7 +250,7 @@ function App() {
                 onChange={(e) => setCategoryX(e.target.value)}
                 title="Click to change the X axis category"
                 placeholder="X category"
-                className="w-56 bg-transparent text-right uppercase outline-none placeholder:text-white/30 focus:text-white/80"
+                className="w-56 border-b-2 border-indigo-300/80 bg-transparent px-1.5 py-1.5 text-right text-xs font-semibold tracking-[0.14em] text-white/90 uppercase drop-shadow-[0_0_5px_rgba(165,180,252,0.45)] outline-none transition placeholder:text-white/60 hover:border-indigo-100 focus:border-white focus:text-white focus:drop-shadow-[0_0_8px_rgba(165,180,252,0.9)]"
               />
               <span>→</span>
             </div>
@@ -210,7 +261,7 @@ function App() {
                 onChange={(e) => setCategoryY(e.target.value)}
                 title="Click to change the Y axis category"
                 placeholder="Y category"
-                className="h-56 bg-transparent uppercase outline-none placeholder:text-white/30 focus:text-white/80 [writing-mode:vertical-rl]"
+                className="h-56 border-l-2 border-indigo-300/80 bg-transparent px-1.5 py-1.5 text-xs font-semibold tracking-[0.14em] text-white/90 uppercase drop-shadow-[0_0_5px_rgba(165,180,252,0.45)] outline-none transition placeholder:text-white/60 hover:border-indigo-100 focus:border-white focus:text-white focus:drop-shadow-[0_0_8px_rgba(165,180,252,0.9)] [writing-mode:vertical-rl]"
               />
             </div>
           </div>
@@ -229,7 +280,7 @@ function App() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="galaxy-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           {searched && !loading && !error && results.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-white/50">
               <SearchX className="size-7" />
@@ -297,6 +348,81 @@ function App() {
           </Button>
         </form>
       </div>
+
+      {phase === "idle" && (
+        <button
+          type="button"
+          onClick={() => {
+            setBatchError(null)
+            batchDialog.current?.showModal()
+          }}
+          className="absolute top-5 right-5 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-3.5 py-2 text-xs font-medium text-white/65 backdrop-blur-md transition hover:border-indigo-300/50 hover:bg-white/10 hover:text-white"
+        >
+          <FileSpreadsheet className="size-4" />
+          Batch search
+        </button>
+      )}
+
+      <dialog
+        ref={batchDialog}
+        className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-[#0b0d18]/95 p-0 text-white shadow-[0_24px_100px_rgba(0,0,0,0.75)] backdrop:bg-[#03040a]/75 backdrop:backdrop-blur-sm"
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={() => batchDialog.current?.close()}
+            title="Close"
+            className="float-right flex size-8 items-center justify-center rounded-full text-white/45 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="size-4" />
+          </button>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <FileSpreadsheet className="size-4 text-indigo-300" />
+            Batch search
+          </div>
+        </div>
+        <div className="p-5">
+          <textarea
+            value={batchText}
+            onChange={(event) => {
+              setBatchText(event.target.value)
+              setBatchError(null)
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Tab") return
+              event.preventDefault()
+              const input = event.currentTarget
+              input.setRangeText("\t", input.selectionStart, input.selectionEnd, "end")
+              setBatchText(input.value)
+              setBatchError(null)
+            }}
+            placeholder={"1\tTübingen attractions\n2\tfood and drinks"}
+            spellCheck={false}
+            autoFocus
+            className="galaxy-scrollbar h-64 w-full resize-none rounded-xl border border-white/10 bg-black/35 p-4 font-mono text-sm leading-6 text-white/85 outline-none transition placeholder:text-white/25 focus:border-indigo-300/50 focus:ring-2 focus:ring-indigo-400/10"
+          />
+          {batchError && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-red-300">
+              <CircleAlert className="size-4 shrink-0" />
+              {batchError}
+            </p>
+          )}
+          {!batchError && batchText && (
+            <p className={`mt-3 text-xs ${batchValidationError ? "text-amber-300" : "text-emerald-300"}`}>
+              {batchValidationError || "Valid format"}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void downloadBatch()}
+            disabled={Boolean(batchValidationError) || batchLoading}
+            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 font-medium text-[#090a12] transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {batchLoading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Generate results.tsv
+          </button>
+        </div>
+      </dialog>
     </div>
   )
 }

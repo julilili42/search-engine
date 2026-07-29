@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -87,4 +86,26 @@
   to {
     opacity: 0;
   }
+}
+
+.galaxy-scrollbar {
+  scrollbar-color: rgb(255 255 255 / 22%) transparent;
+  scrollbar-width: thin;
+}
+
+.galaxy-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.galaxy-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.galaxy-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(255 255 255 / 18%);
+}
+
+.galaxy-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgb(165 180 252 / 42%);
 }

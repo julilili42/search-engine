@@ -5,7 +5,8 @@ import math
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Response
+from .batch import format_batch, parse_batch, search_loaded_batch
 from .embeddings import embed_texts, load_embeddings
 from .search import ALPHA, BETA, SearchResult, load_index, search_index
 from .paths import DEFAULT_INDEX_PATH, DEFAULT_EMBEDDINGS_PATH
@@ -40,7 +41,7 @@ def search_api(
     context_size: int = Query(20, ge=1, le=100),
     cat_x: str | None = Query(None, min_length=1),
     cat_y: str | None = Query(None, min_length=1),
-    proximity: bool = Query(True),
+    proximity: bool = Query(False),
     semantic: bool = Query(True),
     alpha: float = Query(ALPHA, ge=0, le=1),
     beta: float = Query(BETA, ge=0, le=1),
@@ -69,3 +70,22 @@ def search_api(
 @app.get("/health")
 def health():
     return {"status": "ok", "documents": len(app.state.index.documents)}
+
+
+@app.post("/batch")
+def batch_api(
+    data: str = Body(media_type="text/plain"),
+    top_n: int = Query(100, ge=1, le=100),
+):
+    try:
+        batch = parse_batch(data)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    results = search_loaded_batch(
+        app.state.index, app.state.doc_embeddings, batch, top_n
+    )
+    return Response(
+        format_batch(results),
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": 'attachment; filename="results.tsv"'},
+    )

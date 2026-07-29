@@ -103,3 +103,13 @@ def test_health_reports_document_count(client):
     body = response.json()
     assert body["status"] == "ok"
     assert body["documents"] == len(PAGES)
+
+
+def test_batch_returns_downloadable_tsv(client):
+    response = client.post("/batch?top_n=1", content="1\tbanana\n2\tcherry\n")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="results.tsv"'
+    rows = [line.split("\t") for line in response.text.splitlines()]
+    assert [row[0] for row in rows] == ["1", "2"]
+    assert all(len(row) == 4 for row in rows)
