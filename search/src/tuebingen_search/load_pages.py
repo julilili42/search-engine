@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from .paths import PROJECT_ROOT
+
 _BASE_PAGE_COLUMNS = (
     "title",
     "url",
@@ -58,6 +60,10 @@ class PageLoad:
     def _resolve_page_path(self, path: Path) -> Path:
         if path.exists():
             return path
+
+        project_path = PROJECT_ROOT / path
+        if project_path.exists():
+            return project_path
 
         parts = path.parts
         if "data" in parts:

@@ -1,8 +1,8 @@
 {
   "alpha": 0.4,
   "beta": 0.6,
-  "embeddings_sha256": "8ba21aaef30f037d695c7aa23bb6d5c62517fef0fff6c57002dfb40a6d834ca7",
-  "index_sha256": "72092089d5e7d60af4295e7088ac2af82baef58d0f7fb30c5692b4c700a86a3b",
+  "embeddings_sha256": "b8db376b46c2d4d82f5db225351edd60e67ebcb3e31240138a513103c51587c0",
+  "index_sha256": "c37f34f68262e998a90f58cbd90fec69215019ae5d5d7658d3a502a16e212706",
   "pool_depth": 20,
   "queries_sha256": "248261a7c07206c9a70ecd482c6329300931d51b3b719eedb1cf7498c14d3fa3",
   "rerank_candidates": 100,

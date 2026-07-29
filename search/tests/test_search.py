@@ -85,11 +85,11 @@ def test_search_boosts_nearby_query_terms(tmp_path):
     )
 
     results = search_index(index, "alpha beta", top_n=2)
-    without_proximity = search_index(index, "alpha beta", top_n=2, use_proximity=False)
+    with_proximity = search_index(index, "alpha beta", top_n=2, use_proximity=True)
 
-    assert results[0].path == close_page
-    assert results[0].score > results[1].score
-    assert without_proximity[0].score == without_proximity[1].score
+    assert results[0].score == results[1].score
+    assert with_proximity[0].path == close_page
+    assert with_proximity[0].score > with_proximity[1].score
 
 
 def test_proximity_bonus_requires_all_query_terms():

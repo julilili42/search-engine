@@ -7,6 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from lingua import Language, LanguageDetectorBuilder
+
 from .html import extract_text_from_html, is_html_file
 from .tokenizer import tokenize
 from .models import (
@@ -30,6 +32,25 @@ from .storage import save_index, elapsed
 from .load_pages import PageLoad
 
 logger = logging.getLogger(__name__)
+
+_LANGUAGE_DETECTOR = (
+    LanguageDetectorBuilder.from_all_spoken_languages()
+    .with_low_accuracy_mode()
+    .build()
+)
+_MIN_LANGUAGE_WORDS = 20
+_MAX_ENGLISH_SHARE = 0.2
+
+
+def _is_non_english(text: str) -> bool:
+    segments = _LANGUAGE_DETECTOR.detect_multiple_languages_of(text)
+    total = sum(segment.word_count for segment in segments)
+    english = sum(
+        segment.word_count
+        for segment in segments
+        if segment.language == Language.ENGLISH
+    )
+    return total >= _MIN_LANGUAGE_WORDS and english / total <= _MAX_ENGLISH_SHARE
 
 
 def index(index_path: Path, pages_db: PageLoad) -> None:
@@ -61,8 +82,12 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
 
         logger.debug("Indexing %s", file_path)
         extraction_started = time.perf_counter()
-        terms = tokenize(extract_text_from_html(file_path))
+        text = extract_text_from_html(file_path)
         extraction_time += time.perf_counter() - extraction_started
+        if _is_non_english(text):
+            logger.info("Skipped non-English page: %s", record.url)
+            continue
+        terms = tokenize(text)
 
         document = Document(
             path=file_path,

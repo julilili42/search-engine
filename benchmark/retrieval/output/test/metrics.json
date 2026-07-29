@@ -1,24 +1,24 @@
 {
   "bm25f": {
-    "avg_latency_ms": 2.0604666089639068,
+    "avg_latency_ms": 1.8784041050821543,
     "judged_coverage_10": 1.0,
     "judged_coverage_20": 1.0,
     "judged_queries": 10,
-    "mrr_10": 0.8111111111111111,
-    "ndcg_10": 0.6077660171685225,
-    "ndcg_20": 0.6601269560609453,
-    "positive_10": 5.6,
+    "mrr_10": 0.86,
+    "ndcg_10": 0.5382013239369974,
+    "ndcg_20": 0.5798089485099263,
+    "positive_10": 4.9,
     "queries": 10
   },
   "selected": {
-    "avg_latency_ms": 67.6189502235502,
+    "avg_latency_ms": 58.441537304315716,
     "judged_coverage_10": 1.0,
     "judged_coverage_20": 1.0,
     "judged_queries": 10,
-    "mrr_10": 0.875,
-    "ndcg_10": 0.6689960547302338,
-    "ndcg_20": 0.767681260282588,
-    "positive_10": 6.3,
+    "mrr_10": 0.8699999999999999,
+    "ndcg_10": 0.596490464641501,
+    "ndcg_20": 0.6807425790112138,
+    "positive_10": 5.9,
     "queries": 10
   }
 }

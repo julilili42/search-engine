@@ -186,10 +186,9 @@ def score(split: str) -> None:
         json.dumps(dict(rows), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    (output_dir / "README.md").write_text(
-        summary(rows, len(judged), split),
-        encoding="utf-8",
-    )
+    report = summary(rows, len(judged), split)
+    (output_dir / "README.md").write_text(report, encoding="utf-8")
+    print(report)
 
 
 def summary(rows, judgments, split) -> str:

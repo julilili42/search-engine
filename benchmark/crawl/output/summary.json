@@ -1,0 +1,20 @@
+{
+  "database_sha256": "48c0408c5f0a1db42ec9660638d8031b83784499c2623040f40d059b141c5644",
+  "documents": 10028,
+  "labels": {
+    "german": 2494,
+    "not_german": 7531,
+    "uncertain": 3
+  },
+  "missing": 0,
+  "rule": {
+    "detector": "lingua-language-detector 2.2.0",
+    "candidate_languages": [
+      "de",
+      "en"
+    ],
+    "low_accuracy_mode": true,
+    "minimum_classified_words": 20,
+    "german_share_threshold": 0.5
+  }
+}

@@ -5,7 +5,7 @@ MessagePack and compact JSON, and compares file size and median deserialization
 time over 20 runs.
 
 ```bash
-uv run python benchmark/index_storage/benchmark.py
+uv run index-storage-benchmark
 ```
 
 Results and both index files are written to `benchmark/index_storage/output/`.

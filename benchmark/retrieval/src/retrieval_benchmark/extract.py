@@ -54,7 +54,7 @@ def search_api_results(
     queries: dict[int, str],
     top_n: int,
     *,
-    use_proximity: bool = True,
+    use_proximity: bool = False,
     use_semantic: bool = True,
     alpha: float = 0.7,
     beta: float = 0.3,

@@ -47,7 +47,7 @@ def search_index(
     doc_embeddings: PassageEmbeddings | np.ndarray | None = None,
     category_axes: tuple[np.ndarray | None, np.ndarray | None] | np.ndarray | None = None,
     *,
-    use_proximity: bool = True,
+    use_proximity: bool = False,
     use_semantic: bool = True,
     alpha: float = ALPHA,
     beta: float = BETA,

@@ -70,6 +70,21 @@ def test_load_embeddings_returns_matching_passages(tmp_path):
     assert np.allclose(loaded.mean_document_vectors(), [vectors[:2].mean(axis=0), vectors[2]])
 
 
+def test_load_embeddings_matches_project_relative_and_absolute_paths(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    document = make_document(str(project / "data/html/page.html"))
+    out_path = tmp_path / "embeddings.npz"
+    np.savez(
+        out_path,
+        vectors=np.zeros((1, 4), dtype=np.float32),
+        paths=np.array(["data/html/page.html"]),
+        model=MODEL_NAME,
+    )
+    monkeypatch.setattr("tuebingen_search.embeddings.PROJECT_ROOT", project)
+
+    assert load_embeddings(out_path, [document]) is not None
+
+
 def test_load_embeddings_returns_title_vectors(tmp_path):
     out_path = tmp_path / "embeddings.npz"
     documents = [make_document("/a.html"), make_document("/b.html")]

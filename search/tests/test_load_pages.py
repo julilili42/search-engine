@@ -43,6 +43,25 @@ def test_page_load_resolves_paths_after_project_move(tmp_path):
     assert page.path == path
 
 
+def test_page_load_resolves_project_relative_paths_from_other_directory(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    path = project / "data/html/example.test/page.html"
+    path.parent.mkdir(parents=True)
+    path.write_text("<html></html>", encoding="utf-8")
+    pages_db = make_page_load(
+        tmp_path / "pages.sqlite",
+        {path.relative_to(project): "text/html"},
+    )
+    monkeypatch.setattr("tuebingen_search.load_pages.PROJECT_ROOT", project)
+    monkeypatch.chdir(tmp_path)
+
+    [page] = list(pages_db.iter_html_pages())
+
+    assert page.path == path
+
+
 def test_iter_html_pages_keeps_low_relevance_pages(tmp_path):
     site_dir = tmp_path / "html"
     site_dir.mkdir()

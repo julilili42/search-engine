@@ -98,6 +98,33 @@ def test_index_writes_msgpack_file(tmp_path):
     assert cherry_docs == [1]
 
 
+def test_index_skips_predominantly_non_english_page(tmp_path):
+    english = tmp_path / "english.html"
+    german = tmp_path / "german.html"
+    english.write_text(
+        "<p>" + "This is an English page about the university in Tübingen. " * 10 + "</p>",
+        encoding="utf-8",
+    )
+    german.write_text(
+        "<p>" + "Dies ist eine deutsche Seite über die Universität in Tübingen. " * 10 + "</p>",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "index.bin"
+
+    index(
+        index_path,
+        make_page_load(
+            tmp_path / "pages.sqlite",
+            {english: "text/html", german: "text/html"},
+        ),
+    )
+
+    with index_path.open("rb") as index_file:
+        data = msgpack.unpack(index_file, raw=False)
+
+    assert [document[0] for document in data["documents"]] == [str(english)]
+
+
 def test_index_stores_document_length(tmp_path):
     html_dir = tmp_path / "html"
     site_dir = html_dir / "site"

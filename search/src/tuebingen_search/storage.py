@@ -4,8 +4,16 @@ import logging
 
 from pathlib import Path
 from .models import SearchIndex, Document, Posting
+from .paths import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_document_path(path: str) -> Path:
+    path = Path(path)
+    project_path = PROJECT_ROOT / path
+    return project_path if not path.is_absolute() and project_path.exists() else path
+
 
 def save_index(index_path: Path, search_index: SearchIndex) -> None:
     index_path = Path(index_path)
@@ -33,7 +41,7 @@ def load_index(index_path: Path | str) -> SearchIndex:
     index = SearchIndex(
     documents=[
             # *rest: index files written before the title field existed
-            Document(path=Path(path), url=url, length=length, terms=tuple(terms), title=rest[0] if rest else None)
+            Document(path=_resolve_document_path(path), url=url, length=length, terms=tuple(terms), title=rest[0] if rest else None)
             for path, url, length, terms, *rest in raw["documents"]
             ],
     inverted_index={

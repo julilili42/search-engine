@@ -12,6 +12,7 @@ from transformers import AutoModel, AutoTokenizer
 
 from .html import extract_text_from_html
 from .models import Document
+from .paths import PROJECT_ROOT
 from .storage import elapsed, load_index
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,11 @@ BATCH_SIZE = 32
 PASSAGE_CHARS = 2000
 PASSAGE_OVERLAP = 200
 MAX_PASSAGES_PER_DOC = 20
+
+
+def _project_path(path: str | Path) -> Path:
+    path = Path(path)
+    return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 @dataclass(frozen=True)
@@ -125,7 +131,8 @@ def load_embeddings(path: Path, documents: list[Document]) -> PassageEmbeddings 
         if (
             'model' not in data.files
             or data['model'].item() != MODEL_NAME
-            or list(data['paths']) != [str(document.path) for document in documents]
+            or [_project_path(path) for path in data['paths']]
+            != [_project_path(document.path) for document in documents]
         ):
             logger.warning(
                 'Embeddings at %s do not match the current index or model, falling back to '
