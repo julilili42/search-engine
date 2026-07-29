@@ -28,7 +28,9 @@
 \twocolumn[
 \icmltitle{Focused Hybrid Retrieval for English Tübingen Web Content}
 \begin{icmlauthorlist}
-\icmlauthor{INFO4271 project group}{equal}
+\icmlauthor{Julian Jurcevic}{equal}
+\icmlauthor{Arne Hobrlant}{equal}
+\icmlauthor{Andreas von Bendemann}{equal}
 \end{icmlauthorlist}
 \icmlaffiliation{equal}{University of Tübingen}
 \icmlkeywords{focused crawling, BM25F, semantic retrieval, search interface}
@@ -321,10 +323,16 @@ interaction state. They do not alter ranking.}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{img/start_screen.png}\\[-1mm]
-{\scriptsize (a) Query entry in the idle galaxy.}\\[2mm]
-\includegraphics[width=\textwidth]{img/result_screen.png}\\[-1mm]
+\begin{minipage}[t]{.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{img/start_screen.png}\\[-1mm]
+{\scriptsize (a) Query entry in the idle galaxy.}
+\end{minipage}\hfill
+\begin{minipage}[t]{.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{img/result_screen.png}\\[-1mm]
 {\scriptsize (b) Ranked cards and the first ten-result constellation.}
+\end{minipage}
 \caption{Implemented user interface. Both panels are unedited application
 screenshots. The result view keeps the conventional ranking alongside the
 interactive spatial encoding.}

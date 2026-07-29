@@ -41,7 +41,9 @@
 \icmltitle{Focused Hybrid Retrieval for English Tübingen Web Content}
 
 \begin{icmlauthorlist}
-\icmlauthor{INFO4271 project group}{equal}
+\icmlauthor{Julian Jurcevic}{equal}
+\icmlauthor{Arne Hobrlant}{equal}
+\icmlauthor{Andreas von Bendemann}{equal}
 \end{icmlauthorlist}
 
 \icmlaffiliation{equal}{University of Tübingen}
@@ -56,7 +58,7 @@ BM25F first stage, semantic second-stage re-ranking, batch retrieval, and an
 interactive result interface. In a diagnostic 20-query ablation, semantic
 re-ranking outperforms BM25F and the evaluated proximity bonus does not improve
 effectiveness. After configuration was frozen, re-ranking improved nDCG@10
-from 0.6078 to 0.6690 on a separate 10-query test set.
+from 0.5382 to 0.5965 on a separate 10-query test set.
 \end{abstract}
 
 \section{Introduction}
@@ -70,7 +72,7 @@ controlled ablation to justify the final ranking configuration.
 \section{System Overview}
 The system separates offline collection and indexing from online retrieval.
 The crawler stores accepted pages locally, after which the indexer constructs a
-field-aware lexical index and document embeddings. At query time, BM25F
+field-aware inverted index and document embeddings. At query time, BM25F
 retrieves 100 candidates. A semantic model scores only these candidates, and
 the fused ranking is returned through the API, batch command, and interactive
 interface.
@@ -81,8 +83,9 @@ interface.
 \subsection{Crawl Strategy}
 Seeds were selected manually, favoring aggregator pages expected to expose
 many relevant outgoing links. The focused crawler prioritizes links that are
-likely to lead to Tübingen-related content. It respects
-\texttt{robots.txt} and restricts the collection to English pages. Multiple
+likely to lead to Tübingen-related content. It follows the Robots Exclusion
+Protocol \citep{rfc9309} and filters fetched pages using the HTML
+\texttt{lang} attribute. Multiple
 workers consume a global priority frontier organized into per-host queues,
 with at most one active request per host. Host cooldowns, page caps, and early
 stopping after repeated rejects prevent individual domains from dominating the
@@ -91,6 +94,12 @@ Separately, Serper, a Google Search results API, was used to discover pages
 for offline \textsc{PageVerdict} labeling \citep{serper}.
 
 \subsection{Learned Focus Control}
+Static URL and keyword heuristics proved too rigid in early qualitative
+experiments. We therefore use a teacher--student setup to learn crawl-focus
+signals from human judgments and Qwen-generated labels \citep{qwen25}. The resulting
+lightweight student models keep the collection compact while favoring relevant,
+useful pages.
+
 \textsc{PageVerdict} evaluates fetched pages, while \textsc{LinkVerdict}
 prioritizes the links extracted from them. Both use word- and character-level
 TF--IDF with class-balanced logistic regression. \textsc{PageVerdict} uses the
@@ -101,10 +110,14 @@ training, validation, and test sets. Five-fold grouped cross-validation selects
 the regularization strength, and decision thresholds are selected on the
 validation set.
 
-Figure~\ref{fig:verdict-training} summarizes the offline training, and
+Figure~\ref{fig:verdict-training} summarizes offline training, and
 Figure~\ref{fig:crawler-runtime} shows the crawl loop. For
-\textsc{PageVerdict}, Qwen~2.5:7B labels provide weak supervision alongside
-human labels. \textsc{LinkVerdict} uses human labels only because qualitative
+\textsc{PageVerdict}, Qwen~2.5:7B provides automatically generated labels alongside human
+judgments. German pages receive negative labels regardless of topical
+relevance. However, the student model still accepts some pages with misleading
+English metadata, \texttt{/en/} URLs, or English navigation around German main
+content.
+\textsc{LinkVerdict} uses human labels only because qualitative
 inspection indicated that Qwen's judgments were less reliable with the limited
 link context. Table~\ref{tab:verdict-benchmark}
 reports performance on manually labeled test sets of 147 \textsc{PageVerdict}
@@ -205,8 +218,8 @@ interruption.
 
 \begin{table}[t]
   \centering
-  \caption{Collection statistics. ``Hosts'' denotes domains with accepted
-  pages; duplicates are included among rejected pages.}
+  \caption{Final crawl statistics. Hosts are domains represented in the
+  accepted collection. Duplicates are a subset of rejected pages.}
   \label{tab:crawl-statistics}
   \small
   \setlength{\tabcolsep}{3.5pt}
@@ -214,13 +227,12 @@ interruption.
     \toprule
     Fetched & Accepted & Rejected & Duplicates & Hosts \\
     \midrule
-    23,943 & 10,027 & 13,916 & 2,425 & 325 \\
+    23,943 & 10,028 & 13,915 & 2,425 & 325 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The crawler accepted 41.9\% of fetched pages, showing that its focus controls
-filtered a substantial share of the explored content.
+The final crawl fetched 23,943 pages, of which 10,028 (41.9\%) were accepted.
 
 \begin{table}[t]
   \centering
@@ -242,14 +254,23 @@ filtered a substantial share of the explored content.
 
 \section{Indexing and Ranking}
 
+\subsection{Language Safeguard}
+An offline Lingua audit \citep{lingua} found that 24.9\% of accepted pages had
+at least half of their classified German/English words assigned to German.
+Indexing therefore checks the extracted main content independently. In
+Lingua's low-accuracy mode for long text, pages with at least 20 classified
+words are excluded when at least 80\% are assigned to languages other than
+English. This conservative safeguard excluded 1,433 pages, reducing the final
+index from 10,028 to 8,595 documents without altering the stored crawl.
+
 \subsection{Lexical Retrieval}
 Text is lowercased and split into alphanumeric tokens, excluding single-character
 tokens and English stopwords. The inverted index covers body,
 title, and URL fields and stores body positions for snippets and proximity
-scoring. It is serialized with MessagePack. On the complete 10,027-document
-index, MessagePack was 37\% smaller than compact JSON (57.4 vs.\ 91.6\,MB) and
-had a 2.35-times lower median deserialization time over 20 runs (388 vs.\
-910\,ms). For term $t$, document $d$, and fields $f$, BM25F computes
+scoring. It is serialized with MessagePack. On the complete 8,595-document
+index, MessagePack was 37\% smaller than compact JSON (46.0 vs.\ 73.6\,MB) and
+had a 2.40-times lower median deserialization time over 20 runs (307 vs.\
+736\,ms). For term $t$, document $d$, and fields $f$, BM25F computes
 \[
 \tilde f_{t,d}=\sum_f w_f
 \frac{f_{t,d,f}}{1-b+b\,|d_f|/\overline{|d_f|}},
@@ -258,16 +279,13 @@ had a 2.35-times lower median deserialization time over 20 runs (388 vs.\
 s_{\mathrm{BM25F}}(d,q)=
 \sum_{t\in q}\mathrm{IDF}(t)\frac{\tilde f_{t,d}}{k_1+\tilde f_{t,d}}.
 \]
-We use $b=0.75$ and $k_1=1.2$, preserving term-frequency saturation after
-field weighting \citep{robertson2004bm25f}. Based on qualitative experiments,
+We use $b=0.75$ and $k_1=1.2$, preventing repeated term occurrences from
+dominating the score \citep{robertson2004bm25f}. Based on qualitative experiments,
 the body, title, and URL weights are 1, 5, and 3, respectively.
 
-For documents matching at least two distinct query terms, we evaluate a
-proximity bonus of $0.25/(1+g)$, where $g$ is the extra gap in the shortest
-matching body window. This deliberately weak signal is related to prior
-proximity extensions of Okapi scoring \citep{rasolofo2003}. Because the ablation
-in Table~\ref{tab:retrieval-evaluation} shows no effectiveness gain, the bonus is
-not used in the selected configuration.
+We also evaluated a lightly weighted proximity signal inspired by prior
+extensions of Okapi scoring \citep{rasolofo2003}, but disabled it because it did
+not improve retrieval quality.
 
 \subsection{Semantic Retrieval and Fusion}
 The second stage uses the general-purpose
@@ -304,9 +322,10 @@ grades each query--URL pair from 0 (irrelevant) to 3 (highly relevant) using
 URL, title, and snippet. We select the design and
 $\alpha/\beta$ by nDCG@10, then freeze them. Before retrieval, we define ten
 new test queries covering distinct local and informational needs absent from
-development. Their BM25F and selected-system pools yield 267 further judgments;
-the development pool contains 715. nDCG@20, MRR@10, and warmed API latency
-provide complementary evidence.
+development. After the final language safeguard was applied, we reran the
+frozen variants and judged newly surfaced pooled results. The test pool contains
+308 judgments and the development pool 755. nDCG@20, MRR@10, and warmed API
+latency provide complementary evidence.
 
 \begin{table*}[t]
 \centering
@@ -319,20 +338,20 @@ re-ranks BM25F's top 100; latency is mean warmed API time.}
 \toprule
 Set & Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
 \midrule
-Dev. (20) & BM25F    & no  & no  & 0.5727 & 0.6023 & \textbf{0.9500} &  1.94 \\
- & BM25F + proximity & yes & no  & 0.5636 & 0.5925 & \textbf{0.9500} &  4.73 \\
- & BM25F + semantic  & no  & yes & \textbf{0.6441} & \textbf{0.7058} &
-  0.9375 & 65.89 \\
- & Full              & yes & yes & 0.6345 & 0.6982 & 0.9375 & 68.08 \\
+Dev. (20) & BM25F    & no  & no  & 0.5250 & 0.5436 & 0.9350 &  1.79 \\
+ & BM25F + proximity & yes & no  & 0.5042 & 0.5327 & 0.9017 & 15.61 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5953} & \textbf{0.6652} &
+  \textbf{0.9375} & 57.37 \\
+ & Full              & yes & yes & 0.5849 & 0.6577 & \textbf{0.9375} & 57.22 \\
 \midrule
-Test (10) & BM25F    & no  & no  & 0.6078 & 0.6601 & 0.8111 & 2.06 \\
- & BM25F + semantic  & no  & yes & \textbf{0.6690} & \textbf{0.7677} &
-  \textbf{0.8750} & 67.62 \\
+Test (10) & BM25F    & no  & no  & 0.5382 & 0.5798 & 0.8600 & 1.88 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5965} & \textbf{0.6807} &
+  \textbf{0.8700} & 58.44 \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-Semantic re-ranking improves nDCG@10 by 0.0714 over BM25F, whereas proximity
+Semantic re-ranking improves development nDCG@10 by 0.0702 over BM25F, whereas proximity
 reduces effectiveness both alone and in the full system. We therefore select
 BM25F with semantic re-ranking and $\alpha=0.4,\beta=0.6$.
 Table~\ref{tab:retrieval-evaluation} also reports the subsequent frozen test
@@ -356,10 +375,16 @@ augments the ranked cards without altering retrieval order.
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[height=.34\textheight]{img/result_list.png}\hfill
-  \includegraphics[height=.34\textheight]{img/star_constellation.png}\\[-1mm]
-  {\scriptsize (a) Ranked result list.\hfill
-  (b) Category-based star constellation.}
+  \begin{minipage}[t]{.36\textwidth}
+    \centering
+    \includegraphics[height=.30\textheight]{img/result_list.png}\\[-1mm]
+    {\scriptsize (a) Ranked result list.}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{.62\textwidth}
+    \centering
+    \includegraphics[height=.30\textheight]{img/star_constellation.png}\\[-1mm]
+    {\scriptsize (b) Category-based star constellation.}
+  \end{minipage}
   \caption{Implemented search interface with ranked cards and a semantic
   constellation.}
   \label{fig:interface}
@@ -376,6 +401,10 @@ The verdict benchmarks use one labeling policy and relatively small test sets,
 including the 147-example \textsc{PageVerdict} comparison set. Their results
 therefore support the crawler design but do not establish performance on other
 domains.
+
+Language identification is automated and conservative. Mixed-language pages
+may remain indexed, while short pages are retained when too little text is
+available for a reliable decision.
 
 \balance
 \section{Conclusion}
