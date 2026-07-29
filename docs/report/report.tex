@@ -1,4 +1,5 @@
 \documentclass{article}
+
 \usepackage{microtype}
 \usepackage{booktabs}
 \usepackage{balance}
@@ -9,368 +10,416 @@
 \usepackage{hyperref}
 \newcommand{\theHalgorithm}{\arabic{algorithm}}
 \usepackage[accepted]{icml2025}
+\setcitestyle{numbers,square}
 
 \definecolor{TUred}{RGB}{165,30,55}
 \definecolor{TUdark}{RGB}{50,65,75}
 \definecolor{TUblue}{RGB}{0,105,170}
 \definecolor{TUgold}{RGB}{180,145,45}
 \definecolor{TUgreen}{RGB}{80,135,80}
-\hypersetup{colorlinks=true,hypertexnames=false,linkcolor=TUblue,
-  citecolor=TUblue,urlcolor=TUblue}
+\hypersetup{
+  colorlinks=true,
+  hypertexnames=false,
+  linkcolor=TUblue,
+  citecolor=TUblue,
+  urlcolor=TUblue
+}
+
 \setlength{\floatsep}{6pt}
 \setlength{\textfloatsep}{7pt}
 \setlength{\intextsep}{5pt}
 \setlength{\abovecaptionskip}{3pt}
 \setlength{\belowcaptionskip}{0pt}
+
 \icmltitlerunning{Focused Hybrid Retrieval for Tübingen}
 
 \begin{document}
+
 \twocolumn[
 \icmltitle{Focused Hybrid Retrieval for English Tübingen Web Content}
+
 \begin{icmlauthorlist}
 \icmlauthor{Julian Jurcevic}{equal}
 \icmlauthor{Arne Hobrlant}{equal}
 \icmlauthor{Andreas von Bendemann}{equal}
 \end{icmlauthorlist}
+
 \icmlaffiliation{equal}{University of Tübingen}
-\icmlkeywords{focused crawling, BM25F, semantic retrieval, search interface}
+\icmlkeywords{focused crawling, information retrieval, hybrid search, search interface}
 \vskip 0.15in
 ]
 
 \begin{abstract}
-The system implements the complete path from focused web crawling to search-result
-presentation. A resumable, host-aware crawler admits English Tübingen pages. A
-self-implemented BM25F ranker adds term proximity, and an MPNet-based semantic
-score is fused with the lexical score. The interface preserves a ranked list
-while mapping results to an interactive constellation. On one frozen crawl and
-15 queries, an archived controlled ablation records an increase in
-$\mathrm{nDCG}@10$ from 0.599 for the lexical baseline to 0.655 after stopword
-filtering and proximity. These judgments were pooled from system output, so the
-numbers are diagnostic rather than an unbiased estimate of generalization.
+We present an end-to-end search engine for English web content related to
+Tübingen. The system combines a resumable focused crawler, a self-implemented
+BM25F first stage, semantic second-stage re-ranking, batch retrieval, and an
+interactive result interface. In a diagnostic 20-query ablation, semantic
+re-ranking outperforms BM25F and the evaluated proximity bonus does not improve
+effectiveness. After configuration was frozen, re-ranking improved nDCG@10
+from 0.5382 to 0.5965 on a separate 10-query test set.
 \end{abstract}
 
-\section{Task and Verified Scope}
-The project requires local, resumable crawling of English Tübingen content, a
-self-implemented classical first stage, 100-result interactive and batch
-retrieval, one retrieval innovation, and a non-standard interface. The system
-implements the paths shown in Figure~\ref{fig:architecture}. The immutable code
-revision inspected for this report is
-\href{https://github.com/julilili42/search-engine/tree/2acf9cf82496c84b3fc8f249c4e03e9341ac9e31}{\texttt{2acf9cf}}.
+\section{Introduction}
+The project requires a local search engine for English Tübingen-related web
+content. It must cover crawling, indexing, retrieval of 100 results, batch
+evaluation, and an interface that goes beyond a conventional ranked list. Our
+system implements this complete pipeline and uses semantic re-ranking as its
+retrieval innovation. This report describes the main design choices and uses a
+controlled ablation to justify the final ranking configuration.
 
-\begin{table}[H]
-\centering
-\caption{Traceability from the brief to inspected implementation.}
-\label{tab:requirements}
-\scriptsize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}p{.28\columnwidth}p{.65\columnwidth}@{}}
-\toprule
-Requirement & Verifiable implementation path\\
-\midrule
-English, local, resumable crawl &
-Language gate, HTML + SQLite, persisted frontier and deduplication state\\
-Classical first stage &
-Self-implemented BM25F inverted index with body positions\\
-Retrieval innovation &
-Proximity bonus and MPNet score fusion\\
-100-result batch &
-TSV parser/writer, default \texttt{top\_n=100}\\
-Innovative UI &
-Ranked cards plus interactive result constellation\\
-Runtime target &
-Archived 100-result run reports 55.16\,ms mean retrieval time, startup excluded\\
-\bottomrule
-\end{tabular}
-\end{table}
+\section{System Overview}
+The system separates offline collection and indexing from online retrieval.
+The crawler stores accepted pages locally, after which the indexer constructs a
+field-aware inverted index and document embeddings. At query time, BM25F
+retrieves 100 candidates. A semantic model scores only these candidates, and
+the fused ranking is returned through the API, batch command, and interactive
+interface.
 
-\begin{figure*}[t]
-\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[
-  x=1cm,y=1cm,font=\sffamily\scriptsize,
-  box/.style={draw=TUdark!75,rounded corners=2pt,thick,fill=white,
-    minimum height=7.5mm,minimum width=2cm,align=center,inner xsep=5pt},
-  crawl/.style={box,fill=TUgreen!8,draw=TUgreen!75!black},
-  lex/.style={box,fill=TUblue!7,draw=TUblue},
-  sem/.style={box,fill=TUgold!12,draw=TUgold!90!black},
-  service/.style={box,fill=TUred!6,draw=TUred},
-  group/.style={draw=TUdark!35,rounded corners=3pt,fill=white,
-    inner xsep=5pt,inner ysep=5pt},
-  flow/.style={-{Latex[length=2mm,width=1.3mm]},thick,TUdark!85},
-  lanehead/.style={font=\sffamily\bfseries\tiny,text=TUdark!85,
-    anchor=west},
-  grouphead/.style={font=\sffamily\bfseries\tiny,text=TUdark!65,
-    anchor=north}
-]
-% Offline path
-\node[crawl] (seed) at (1.25,1.7) {\bfseries Seed URLs};
-\node[crawl,minimum width=2.5cm] (crawler) at (5.05,1.7)
-  {\bfseries Focused crawler};
-\node[box,minimum width=2.3cm] (corpus) at (8.9,1.7)
-  {\bfseries Accepted corpus};
-\node[lex,minimum width=2.1cm] (lexindex) at (13.0,1.7)
-  {\bfseries Lexical index};
-\node[sem,minimum width=2.25cm] (semindex) at (15.65,1.7)
-  {\bfseries Semantic vectors};
-\begin{scope}[on background layer]
-  \node[group,fit=(lexindex)(semindex)] (artifacts) {};
-\end{scope}
-\node[grouphead] at ([yshift=-1pt]artifacts.north) {RETRIEVAL ARTIFACTS};
-\draw[flow] (seed)--(crawler);
-\draw[flow] (crawler)--(corpus);
-\draw[flow] (corpus)--(artifacts.west);
-
-% Online path
-\node[service] (query) at (1.25,-.45) {\bfseries Query};
-\node[lex,minimum width=1.9cm] (lexscore) at (4.45,-.45)
-  {\bfseries Lexical};
-\node[sem,minimum width=1.9cm] (semscore) at (6.75,-.45)
-  {\bfseries Semantic};
-\begin{scope}[on background layer]
-  \node[group,fit=(lexscore)(semscore)] (retrieval) {};
-\end{scope}
-\node[grouphead] at ([yshift=-1pt]retrieval.north) {PARALLEL RETRIEVAL};
-\node[box,minimum width=1.7cm] (union) at (9.35,-.45)
-  {\bfseries Union};
-\node[box,minimum width=2cm] (fusion) at (12.25,-.45)
-  {\bfseries Weighted fusion};
-\node[service,minimum width=2.2cm] (output) at (15.55,-.45)
-  {\bfseries Ranked results};
-\draw[flow] (query)--(retrieval.west);
-\draw[flow] (retrieval.east)--(union);
-\draw[flow] (union)--(fusion);
-\draw[flow] (fusion)--(output);
-
-\begin{scope}[on background layer]
-  \filldraw[rounded corners=4pt,fill=TUdark!2,draw=TUdark!18]
-    (0,1.08) rectangle (17.15,2.38);
-  \filldraw[rounded corners=4pt,fill=TUdark!2,draw=TUdark!18]
-    (0,-1.08) rectangle (17.15,.22);
-\end{scope}
-\node[lanehead] at (.25,2.17) {OFFLINE};
-\node[lanehead] at (.25,.01) {ONLINE};
-\end{tikzpicture}}
-\caption{Implemented architecture. Matching colors connect the offline
-representations to the two online retrieval branches. Their top-100 lists are
-unioned, fused as $0.7\hat{s}_{\rm lex}+0.3s_{\rm sem}$, and truncated to
-$k\leq100$ for the web and batch interfaces.}
-\label{fig:architecture}
-\end{figure*}
+The \href{https://github.com/julilili42/search-engine}{search system}
+(\texttt{SEARCH-COMMIT}) and
+\href{https://github.com/julilili42/labeling-lab}{crawl-model training}
+(\texttt{LABELING-COMMIT}) are maintained in separate repositories.
 
 \section{Focused Crawling and Storage}
-Eight workers share one priority frontier. Each host owns a URL heap. A host
-remains leased while its page and any same-origin sitemap are fetched, so the
-crawler does not issue concurrent requests to that host. After the lease, the
-scheduler waits for the global 0.7-second request delay before starting the next
-request to that host.
-Every URL is checked against a cached \texttt{robots.txt} policy before fetching
-\cite{koster2022robots}. HTTP 429 and 5xx responses receive at most the
-configured number of attempts and a delay capped at 30\,s.
+\subsection{Crawl Strategy}
+Seeds were selected manually, favoring aggregator pages expected to expose
+many relevant outgoing links. The focused crawler prioritizes links that are
+likely to lead to Tübingen-related content. It follows the Robots Exclusion
+Protocol \citep{rfc9309} and filters fetched pages using the HTML
+\texttt{lang} attribute. Multiple
+workers consume a global priority frontier organized into per-host queues,
+with at most one active request per host. Host cooldowns, page caps, and early
+stopping after repeated rejects prevent individual domains from dominating the
+collection.
+Separately, Serper, a Google Search results API, was used to discover pages
+for offline \textsc{PageVerdict} labeling \citep{serper}.
 
-LinkVerdict scores canonical link candidates from anchor, target, parent, and
-depth features. Depth and host saturation reduce frontier priority. Per-page,
-target-host, URL-family, seed, and host budgets limit concentration. At most
-three links per page use the lower-threshold exploration lane. After fetching,
-PageVerdict and the parsed language admit only English pages above the fixed
-index threshold. A 64-bit SimHash over token trigrams rejects text fingerprints
-within Hamming distance three \cite{manku2007simhash}.
+\subsection{Learned Focus Control}
+Static URL and keyword heuristics proved too rigid in early qualitative
+experiments. We therefore use a teacher--student setup to learn crawl-focus
+signals from human judgments and Qwen-generated labels \citep{qwen25}. The resulting
+lightweight student models keep the collection compact while favoring relevant,
+useful pages.
 
-Accepted HTML is stored by host. Page, rejection, and link-decision metadata is
-stored in SQLite. Frontier URLs, seen URLs, and SimHashes are checkpointed as
-JSON and reloaded on restart. The working snapshot contains 7,568 accepted
-English pages from 396 hosts and 12,452 recorded rejections. Of the 20,020
-accepted or rejected fetch outcomes, 2,233 are near-duplicate rejections
-(11.2\%). These are database counts, not estimates of topical precision.
+\textsc{PageVerdict} evaluates fetched pages, while \textsc{LinkVerdict}
+prioritizes the links extracted from them. Both use word- and character-level
+TF--IDF with class-balanced logistic regression. \textsc{PageVerdict} uses the
+title, URL, metadata snippet, and visible page text. \textsc{LinkVerdict} uses
+the anchor text, target and parent URLs, crawl depth, and the parent page's
+\textsc{PageVerdict} signal. Data are split by destination host into disjoint
+training, validation, and test sets. Five-fold grouped cross-validation selects
+the regularization strength, and decision thresholds are selected on the
+validation set.
 
-\section{Indexing and Ranking}
-\subsection{Classical first stage}
-The tokenizer lowercases Unicode alphanumeric tokens, drops one-character
-tokens, and removes a fixed English stoplist. The inverted index stores body
-positions and precomputed BM25F contributions for body, title, and URL-path
-fields with weights $1$, $5$, and $3$. With $b=0.75$ and $k_1=1.2$, the
-implementation uses
-\begin{eqnarray*}
-\tilde f_{t,d} &=& \sum_f w_f
-\frac{f_{t,d,f}}{1-b+b|d_f|/\overline{|d_f|}},\\
-s_{\rm BM25F} &=& \sum_{t\in q}\mathrm{IDF}(t)
-\frac{\tilde f_{t,d}}{k_1+\tilde f_{t,d}} .
-\end{eqnarray*}
-This preserves term-frequency saturation after field weighting
-\cite{robertson2004bm25f}. For the distinct query terms matched in the body, the
-smallest covering window adds $0.25/(1+g)$, where $g$ is the number of
-non-query positions inside that window. A document matching fewer than two
-distinct query terms receives no bonus. This is a deliberately weak ordering
-signal related to prior proximity extensions of Okapi scoring
-\cite{rasolofo2003proximity}.
-
-\subsection{Semantic evidence and fusion}
-Offline, each document is split into at most 20 character passages of length
-2,000 with 200-character overlap. The title and passages are encoded by
-\texttt{nli-mpnet-base-v2} from Sentence Transformers. Attention-mask-aware
-mean pooling and $L_2$ normalization produce 768-dimensional vectors. At query
-time, cosine similarities form
-\[
-s_{\rm sem}=0.20s_{\rm title}
- +0.65\max_i s_i
- +0.15\,\mathrm{mean}(\mathrm{top3}_i\,s_i).
-\]
-Sentence-BERT-style representations support direct cosine comparison
-\cite{reimers2019sentencebert}. The union of the top 100 lexical and top 100
-semantic documents is re-ranked by
-$0.7\hat{s}_{\rm lex}+0.3s_{\rm sem}$, where $\hat{s}_{\rm lex}$ is min--max
-normalized over that union. Missing, malformed, model-mismatched, or
-index-mismatched vectors fall back to lexical ranking.
-
-\paragraph{Compliance boundary.}
-The current union admits semantic-only candidates. It is therefore a hybrid
-candidate generator, not a strict re-ranker of only the classical top 100. A
-strict reading of the project FAQ requires removing the semantic top-100 branch
-and applying $s_{\rm sem}$ only to lexical candidates. Figure~\ref{fig:architecture}
-makes this deviation explicit. The crawler, index, search, API, and batch
-pipeline are Python. The interactive client is React/TypeScript despite the FAQ
-stating that everything must be implemented in Python. The client requests 30
-results, although the API and batch path support 100.
-
-\section{Evaluation}
-We use graded labels 0--3 and nDCG, which discounts relevant documents at lower
-ranks \cite{jarvelin2002ndcg}. Table~\ref{tab:results} reproduces archived JSON
-metrics for three runs on the same crawl snapshot and the same 15 queries.
-Stopword filtering changed nDCG@10 by $+0.043$. Proximity changed it by a
-further $+0.012$. These are observed differences, not significance-tested
-effects.
-
-\begin{table}[t]
-\centering
-\caption{Controlled lexical ablation (15 queries, one frozen crawl). ``Pos.''
-counts labels $>0$. Latency is measured retrieval time.}
-\label{tab:results}
-\scriptsize
-\setlength{\tabcolsep}{3.0pt}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-Variant & nDCG@10 & nDCG@20 & MRR@10 & Pos.@10 & ms\\
-\midrule
-BM25 baseline & .599 & .764 & .967 & 7.0 & 1.95\\
-+ stopwords & .643 & \textbf{.775} & \textbf{1.000} & 7.4 & 1.16\\
-+ proximity & \textbf{.655} & .772 & \textbf{1.000} & \textbf{7.6} & 1.99\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The archived 20-query hybrid diagnostic records nDCG@10 0.712,
-nDCG@20 0.694, MRR@10 0.935, 8.55 positives@10, and 55.16\,ms mean measured
-retrieval time for 100 results. It is not a controlled estimate of the
-semantic component's incremental value. All reported runs were evaluated
-against a qrels pool expanded from system outputs, giving 100\% judged coverage
-at ranks 10 and 20. No independent assessors, held-out query set, or confidence
-intervals are available. Stronger causal claims are therefore not supported.
-
-\section{Evidence and Reproducibility}
-Crawl counts above are produced by the crawl-report command directly from the
-current SQLite database. The lexical rows in Table~\ref{tab:results} and the
-hybrid diagnostic are archived as JSON in the retrieval benchmark's runs
-directory. Each record fixes the crawl name, query count, metric values, and
-timestamp.
-
-Latency is measured with \texttt{time.perf\_counter} around retrieval for each
-query. It includes query encoding in a warmed process, but excludes process
-startup, index and vector loading, HTTP transport, and rendering. We therefore
-do not label it end-to-end latency. The repository contains runtime classifier
-artifacts but no held-out PageVerdict or LinkVerdict metrics. No classifier
-accuracy is claimed.
-
-\section{Result Presentation}
-The FastAPI service loads the index and matching vectors once at startup and
-accepts up to 100 results per request. The batch command defaults to 100 and
-writes query ID, rank, URL, and score as tab-separated rows.
-
-The web client presents ten clickable result cards per page together with ten
-result stars. Star size and color encode the result-set min--max-normalized final
-score. Without category labels, vertical position follows rank. Users may name
-an $x$ and/or $y$ category. The server embeds each label and projects mean
-document vectors onto it, after centering and bounded scaling. Overlapping stars
-fan out on hover, and pagination pans the camera to the next ten-result
-constellation. The ranked cards remain visible, so the spatial view augments
-rather than replaces direct navigation.
+Figure~\ref{fig:verdict-training} summarizes offline training, and
+Figure~\ref{fig:crawler-runtime} shows the crawl loop. For
+\textsc{PageVerdict}, Qwen~2.5:7B provides automatically generated labels alongside human
+judgments. German pages receive negative labels regardless of topical
+relevance. However, the student model still accepts some pages with misleading
+English metadata, \texttt{/en/} URLs, or English navigation around German main
+content.
+\textsc{LinkVerdict} uses human labels only because qualitative
+inspection indicated that Qwen's judgments were less reliable with the limited
+link context. Table~\ref{tab:verdict-benchmark}
+reports performance on manually labeled test sets of 147 \textsc{PageVerdict}
+and 546 \textsc{LinkVerdict} examples.
 
 \begin{figure}[t]
-\centering
-\begin{tikzpicture}[
-  x=1cm,y=1cm,font=\sffamily\scriptsize,
-  signal/.style={draw=TUdark!65,rounded corners=2pt,fill=TUdark!4,
-    minimum width=30mm,minimum height=6.5mm,align=center},
-  encoding/.style={draw=TUblue,rounded corners=2pt,fill=TUblue!7,
-    minimum width=31mm,minimum height=6.5mm,align=center},
-  map/.style={-{Latex[length=1.8mm]},semithick,TUdark}
-]
-\node[signal] (metadata) at (0,2.55) {title, URL, snippet};
-\node[encoding] (card) at (4.15,2.55) {ranked result card};
-\node[signal] (score) at (0,1.7) {fused score};
-\node[encoding] (appearance) at (4.15,1.7) {star size + color};
-\node[signal] (axes) at (0,0.85) {rank / category similarity};
-\node[encoding] (position) at (4.15,0.85) {default / semantic $x,y$};
-\node[signal] (interaction) at (0,0) {overlap graph / page};
-\node[encoding] (motion) at (4.15,0) {hover fan-out / camera pan};
-\draw[map] (metadata)--(card);
-\draw[map] (score)--(appearance);
-\draw[map] (axes)--(position);
-\draw[map] (interaction)--(motion);
-\end{tikzpicture}
-\caption{Visual encodings are deterministic functions of returned fields and
-interaction state. They do not alter ranking.}
-\label{fig:visual-encoding}
+  \centering
+  \resizebox{\columnwidth}{!}{%
+  \begin{tikzpicture}[
+    baseline=(current bounding box.south),
+    node distance=3mm and 5mm,
+    box/.style={
+      draw,
+      rounded corners,
+      align=center,
+      font=\scriptsize,
+      minimum height=7mm,
+      text width=21mm,
+      inner sep=1.5pt
+    },
+    arrow/.style={-{Latex[length=1.7mm]}, semithick}
+  ]
+    \node[box, fill=TUdark!8] (page-samples) {Serper +\\crawl pages};
+    \node[box, fill=TUgold!12, right=of page-samples] (page-labels)
+      {Qwen + human\\($n=2{,}538$)};
+    \node[box, fill=TUblue!10, right=of page-labels] (page-model)
+      {\textsc{PageVerdict}};
+
+    \node[box, fill=TUdark!8, below=of page-samples] (link-samples)
+      {Crawler link\\samples};
+    \node[box, fill=TUgold!12, right=of link-samples] (link-labels)
+      {Human only\\($n=2{,}037$)};
+    \node[box, fill=TUblue!10, right=of link-labels] (link-model)
+      {\textsc{LinkVerdict}};
+
+    \draw[arrow] (page-samples) -- (page-labels);
+    \draw[arrow] (page-labels) -- (page-model);
+    \draw[arrow] (link-samples) -- (link-labels);
+    \draw[arrow] (link-labels) -- (link-model);
+  \end{tikzpicture}
+  }
+  \caption{Offline training of the TF--IDF logistic-regression verdict models.}
+  \label{fig:verdict-training}
 \end{figure}
 
+\begin{figure}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{%
+  \begin{tikzpicture}[
+    baseline=(current bounding box.south),
+    node distance=3mm,
+    box/.style={
+      draw,
+      rounded corners,
+      align=center,
+      font=\scriptsize,
+      minimum height=7mm,
+      text width=17mm,
+      inner sep=1.5pt
+    },
+    arrow/.style={-{Latex[length=1.7mm]}, semithick}
+  ]
+    \node[box, fill=TUgold!12] (frontier) {Global\\frontier};
+    \node[box, fill=TUdark!8, right=of frontier] (fetch) {Fetch and\\parse};
+    \node[box, fill=TUblue!10, right=of fetch] (page)
+      {\textsc{PageVerdict}};
+    \node[box, fill=TUgreen!10, right=of page] (decision)
+      {Store or\\reject};
+
+    \node[box, fill=TUgold!12, below=of frontier] (queue)
+      {Target-host\\queue};
+    \node[box, fill=TUblue!10, below=of fetch] (link)
+      {\textsc{LinkVerdict}};
+    \node[box, fill=TUdark!8, below=of page] (extract)
+      {Extract\\links};
+
+    \draw[arrow] (frontier) -- (fetch);
+    \draw[arrow] (fetch) -- (page);
+    \draw[arrow] (page) -- (decision);
+    \draw[arrow] (page) -- (extract);
+    \draw[arrow] (extract) -- (link);
+    \draw[arrow] (link) -- (queue);
+    \draw[arrow] (queue) -- (frontier);
+  \end{tikzpicture}
+  }
+  \caption{Runtime crawl loop. \textsc{LinkVerdict} scores extracted links
+  before admission to the target host queue.}
+  \label{fig:crawler-runtime}
+\end{figure}
+
+\subsection{Persistence and Collection Statistics}
+URLs are normalized and deduplicated before entering the frontier. After
+fetching, a 64-bit SimHash over token trigrams rejects fingerprints within a
+Hamming distance of three from an accepted page \citep{manku2007}.
+Accepted HTML is stored locally, while crawl metadata and model decisions are
+persisted in SQLite. The frontier and deduplication state can be restored after
+interruption.
+
+\begin{table}[t]
+  \centering
+  \caption{Final crawl statistics. Hosts are domains represented in the
+  accepted collection. Duplicates are a subset of rejected pages.}
+  \label{tab:crawl-statistics}
+  \small
+  \setlength{\tabcolsep}{3.5pt}
+  \begin{tabular}{@{}rrrrr@{}}
+    \toprule
+    Fetched & Accepted & Rejected & Duplicates & Hosts \\
+    \midrule
+    23,943 & 10,028 & 13,915 & 2,425 & 325 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The final crawl fetched 23,943 pages, of which 10,028 (41.9\%) were accepted.
+
+\begin{table}[t]
+  \centering
+  \caption{Performance on human-labeled test sets. Q and H denote
+  Qwen~2.5:7B and human training labels, respectively.}
+  \label{tab:verdict-benchmark}
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lrrrrr@{}}
+    \toprule
+    Model & $n$ & Bal.\ Acc. & F1 & ROC--AUC & AP \\
+    \midrule
+    Page (Q+H) & 147 & 0.692 & 0.709 & 0.774 & 0.720 \\
+    Page (H) & 147 & 0.624 & 0.599 & 0.719 & 0.730 \\
+    Link (H) & 546 & 0.746 & 0.629 & 0.822 & 0.627 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Indexing and Ranking}
+
+\subsection{Language Safeguard}
+An offline Lingua audit \citep{lingua} found that 24.9\% of accepted pages had
+at least half of their classified German/English words assigned to German.
+Indexing therefore checks the extracted main content independently. In
+Lingua's low-accuracy mode for long text, pages with at least 20 classified
+words are excluded when at least 80\% are assigned to languages other than
+English. This conservative safeguard excluded 1,433 pages, reducing the final
+index from 10,028 to 8,595 documents without altering the stored crawl.
+
+\subsection{Lexical Retrieval}
+Text is lowercased and split into alphanumeric tokens, excluding single-character
+tokens and English stopwords. The inverted index covers body,
+title, and URL fields and stores body positions for snippets and proximity
+scoring. It is serialized with MessagePack. On the complete 8,595-document
+index, MessagePack was 37\% smaller than compact JSON (46.0 vs.\ 73.6\,MB) and
+had a 2.40-times lower median deserialization time over 20 runs (307 vs.\
+736\,ms). For term $t$, document $d$, and fields $f$, BM25F computes
+\[
+\tilde f_{t,d}=\sum_f w_f
+\frac{f_{t,d,f}}{1-b+b\,|d_f|/\overline{|d_f|}},
+\]
+\[
+s_{\mathrm{BM25F}}(d,q)=
+\sum_{t\in q}\mathrm{IDF}(t)\frac{\tilde f_{t,d}}{k_1+\tilde f_{t,d}}.
+\]
+We use $b=0.75$ and $k_1=1.2$, preventing repeated term occurrences from
+dominating the score \citep{robertson2004bm25f}. Based on qualitative experiments,
+the body, title, and URL weights are 1, 5, and 3, respectively.
+
+We also evaluated a lightly weighted proximity signal inspired by prior
+extensions of Okapi scoring \citep{rasolofo2003}, but disabled it because it did
+not improve retrieval quality.
+
+\subsection{Semantic Retrieval and Fusion}
+The second stage uses the general-purpose
+\texttt{nli-mpnet-base-v2} encoder, whose sentence-embedding training uses
+SNLI and MultiNLI natural-language-inference data
+\citep{nli-mpnet-base-v2}. Each document is split into at most 20 overlapping
+2,000-character passages, and its title is embedded separately. With cosine
+similarity between the query $q$, title $t_d$, and passages $p_i$, the
+heuristically weighted semantic score is
+\[
+\begin{array}{rl}
+s_{\mathrm{sem}}(d,q)={}&0.20\cos(q,t_d)\\
+&+0.65\max_i\cos(q,p_i)\\
+&+0.15\,\mathrm{mean}_{i\in\mathrm{top3}}\cos(q,p_i).
+\end{array}
+\]
+Semantic evidence is computed only for the 100 BM25F candidates. The final
+score is
+\[
+s_{\mathrm{final}}(d,q)=\alpha\,\hat{s}_{\mathrm{BM25F}}(d,q)
+  +\beta\,\hat{s}_{\mathrm{sem}}(d,q),
+\]
+where $\hat{s}_{\mathrm{BM25F}},\hat{s}_{\mathrm{sem}}\in[0,1]$ are obtained
+by independently min--max normalizing both candidate score vectors. With
+non-negative $\alpha+\beta=1$, $s_{\mathrm{final}}\in[0,1]$. We tested mixture
+weights in increments of 0.1 on the development queries and selected
+$\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10.
+Missing or incompatible embeddings fall back to BM25F.
+
+\section{Evaluation}
+We first use 20 development queries covering broad topics, named entities, and
+specific tasks to select the retrieval design. The pool unites the top 20 from
+the four ablation variants and all eleven fusion weights. A single assessor
+grades each query--URL pair from 0 (irrelevant) to 3 (highly relevant) using
+URL, title, and snippet. We select the design and
+$\alpha/\beta$ by nDCG@10, then freeze them. Before retrieval, we define ten
+new test queries covering distinct local and informational needs absent from
+development. After the final language safeguard was applied, we reran the
+frozen variants and judged newly surfaced pooled results. The test pool contains
+308 judgments and the development pool 755. nDCG@20, MRR@10, and warmed API
+latency provide complementary evidence.
+Latency includes query encoding in a warmed process, but excludes startup,
+artifact loading, HTTP transport, and rendering.
+
+\begin{table*}[t]
+\centering
+\caption{Development ablation and frozen test results. Semantic scoring
+re-ranks BM25F's top 100; latency is mean warmed API time.}
+\label{tab:retrieval-evaluation}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}llccrrrr@{}}
+\toprule
+Set & Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
+\midrule
+Dev. (20) & BM25F    & no  & no  & 0.5250 & 0.5436 & 0.9350 &  1.79 \\
+ & BM25F + proximity & yes & no  & 0.5042 & 0.5327 & 0.9017 & 15.61 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5953} & \textbf{0.6652} &
+  \textbf{0.9375} & 57.37 \\
+ & Full              & yes & yes & 0.5849 & 0.6577 & \textbf{0.9375} & 57.22 \\
+\midrule
+Test (10) & BM25F    & no  & no  & 0.5382 & 0.5798 & 0.8600 & 1.88 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5965} & \textbf{0.6807} &
+  \textbf{0.8700} & 58.44 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Semantic re-ranking improves development nDCG@10 by 0.0702 over BM25F, whereas proximity
+reduces effectiveness both alone and in the full system. We therefore select
+BM25F with semantic re-ranking and $\alpha=0.4,\beta=0.6$.
+Table~\ref{tab:retrieval-evaluation} also reports the subsequent frozen test
+evaluation.
+
+\section{Result Presentation}
+The presentation aims to expose retrieved URLs in a more creative form than a
+conventional result list. Inspired by the Internet as a network of
+interconnected networks, the interface maps results to stellar constellations
+through which the user can navigate as a galaxy. The web client presents ten
+clickable result cards alongside ten result stars
+(Figure~\ref{fig:interface}). Star size and color encode the result-set
+min--max-normalized final score, while vertical position follows rank by
+default. Users may define semantic \(x\)- and \(y\)-axes through category
+labels, onto which the server projects centered and bounded document
+embeddings. In Figure~\ref{fig:interface}(b), \emph{river} and \emph{city}
+organize this projection, separating results about the Neckar river from
+geographic entities such as Neckar-Alb. Overlapping stars fan out on hover,
+and pagination pans the camera between result constellations. The spatial view
+augments the ranked cards without altering retrieval order.
+Batch retrieval returns query ID, rank, URL, and score as TSV.
+
 \begin{figure*}[t]
-\centering
-\begin{minipage}[t]{.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{img/start_screen.png}\\[-1mm]
-{\scriptsize (a) Query entry in the idle galaxy.}
-\end{minipage}\hfill
-\begin{minipage}[t]{.49\textwidth}
-\centering
-\includegraphics[width=\linewidth]{img/result_screen.png}\\[-1mm]
-{\scriptsize (b) Ranked cards and the first ten-result constellation.}
-\end{minipage}
-\caption{Implemented user interface. Both panels are unedited application
-screenshots. The result view keeps the conventional ranking alongside the
-interactive spatial encoding.}
-\label{fig:ui}
+  \centering
+  \begin{minipage}[t]{.36\textwidth}
+    \centering
+    \includegraphics[height=.30\textheight]{img/result_list.png}\\[-1mm]
+    {\scriptsize (a) Ranked result list.}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{.62\textwidth}
+    \centering
+    \includegraphics[height=.30\textheight]{img/star_constellation.png}\\[-1mm]
+    {\scriptsize (b) Category-based star constellation.}
+  \end{minipage}
+  \caption{Implemented search interface with ranked cards and a semantic
+  constellation.}
+  \label{fig:interface}
 \end{figure*}
+
+\section{Limitations}
+The single-assessor grades use retrieved metadata, and both pools contain only
+results produced by the compared systems. The independent test
+avoids tuning on reported results, but ten queries remain too few to establish
+statistical significance or superiority beyond this collection. It is also
+separate from the official five-query course evaluation.
+
+The verdict benchmarks use one labeling policy and relatively small test sets,
+including the 147-example \textsc{PageVerdict} comparison set. Their results
+therefore support the crawler design but do not establish performance on other
+domains.
+
+Language identification is automated and conservative. Mixed-language pages
+may remain indexed, while short pages are retained when too little text is
+available for a reliable decision.
 
 \balance
 \section{Conclusion}
-The system supplies a focused crawl, local index, batch path, API, and innovative
-interface. Its strongest controlled evidence is limited to the
-lexical ablation: stopword filtering plus proximity raised nDCG@10 from 0.599
-to 0.655 on one fixed 15-query setup. Independent judgments on a frozen crawl
-and a strictly lexical candidate set are still required to establish the
-incremental value of semantic fusion and full compliance with the brief.
+The implemented system covers the path from focused crawling to batch and
+interactive retrieval. The development ablation selects semantic re-ranking of
+BM25F candidates, and the separate test improves all three reported metrics
+on these queries. The official pooled course evaluation will provide the final
+external measure of effectiveness.
 
-\begin{thebibliography}{6}
-\bibitem[Robertson et~al.(2004)]{robertson2004bm25f}
-S. Robertson, H. Zaragoza, and M. Taylor. Simple BM25 extension to multiple
-weighted fields. In \emph{CIKM}, 2004.
+\bibliography{bibliography}
+\bibliographystyle{unsrtnat}
 
-\bibitem[Rasolofo and Savoy(2003)]{rasolofo2003proximity}
-Y. Rasolofo and J. Savoy. Term proximity scoring for keyword-based retrieval
-systems. In \emph{ECIR}, 2003.
-
-\bibitem[Manku et~al.(2007)]{manku2007simhash}
-G. Manku, A. Jain, and A. Das Sarma. Detecting near-duplicates for web
-crawling. In \emph{WWW}, 2007.
-
-\bibitem[Koster et~al.(2022)]{koster2022robots}
-M. Koster, G. Illyes, H. Zeller, and L. Sassman. Robots Exclusion Protocol.
-RFC 9309, 2022.
-
-\bibitem[Reimers and Gurevych(2019)]{reimers2019sentencebert}
-N. Reimers and I. Gurevych. Sentence-BERT: Sentence embeddings using Siamese
-BERT-networks. In \emph{EMNLP-IJCNLP}, 2019.
-
-\bibitem[J\"arvelin and Kek\"al\"ainen(2002)]{jarvelin2002ndcg}
-K. J\"arvelin and J. Kek\"al\"ainen. Cumulated gain-based evaluation of IR
-techniques. \emph{ACM TOIS}, 2002.
-\end{thebibliography}
 \end{document}
