@@ -313,6 +313,7 @@ by independently min--max normalizing both candidate score vectors. With
 non-negative $\alpha+\beta=1$, $s_{\mathrm{final}}\in[0,1]$. We tested mixture
 weights in increments of 0.1 on the development queries and selected
 $\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10.
+Missing or incompatible embeddings fall back to BM25F.
 
 \section{Evaluation}
 We first use 20 development queries covering broad topics, named entities, and
@@ -326,6 +327,8 @@ development. After the final language safeguard was applied, we reran the
 frozen variants and judged newly surfaced pooled results. The test pool contains
 308 judgments and the development pool 755. nDCG@20, MRR@10, and warmed API
 latency provide complementary evidence.
+Latency includes query encoding in a warmed process, but excludes startup,
+artifact loading, HTTP transport, and rendering.
 
 \begin{table*}[t]
 \centering
