@@ -25,6 +25,7 @@ cd client
 npm run dev
 ```
 
-The dev server runs on http://localhost:5173 and proxies `/search` and `/health`
-to `http://127.0.0.1:8000` (see `vite.config.ts`), so no backend CORS is needed.
-Use a custom index with `INDEX_PATH=/path/to/index.bin uv run uvicorn ...`.
+The dev server runs on http://localhost:5173 and proxies `/search`, `/batch`,
+and `/health` to `http://127.0.0.1:8000` (see `vite.config.ts`), so no backend
+CORS is needed. Use a custom index with
+`INDEX_PATH=/path/to/index.bin uv run uvicorn ...`.

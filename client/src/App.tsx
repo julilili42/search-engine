@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight, FileSpreadsheet, Download, X } from "lucide-react"
+import { Search, Loader2, ExternalLink, Home, CircleAlert, SearchX, ChevronLeft, ChevronRight, FileSpreadsheet, Download, Upload, X } from "lucide-react"
 
 import Scene, { type Phase } from "@/galaxy/Scene"
 import { PAGE_SIZE } from "@/galaxy/ResultStars"
@@ -382,6 +382,28 @@ function App() {
           </div>
         </div>
         <div className="p-5">
+          <label className="mb-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-300/35 bg-indigo-400/5 text-sm text-indigo-200 transition hover:border-indigo-300/70 hover:bg-indigo-400/10">
+            <Upload className="size-4" />
+            Upload queries.tsv
+            <input
+              type="file"
+              accept=".tsv,text/tab-separated-values,text/plain"
+              className="sr-only"
+              onChange={async (event) => {
+                const input = event.currentTarget
+                const file = input.files?.[0]
+                if (!file) return
+                try {
+                  setBatchText((await file.text()).replace(/^\uFEFF/, ""))
+                  setBatchError(null)
+                } catch {
+                  setBatchError("Could not read TSV file.")
+                } finally {
+                  input.value = ""
+                }
+              }}
+            />
+          </label>
           <textarea
             value={batchText}
             onChange={(event) => {
