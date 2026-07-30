@@ -18,7 +18,8 @@ runs/
 judging_pool.tsv
 unjudged.tsv
 benchmark/retrieval/output/*/results.json
-benchmark/index_storage/output/
+benchmark/index_storage/output/index.bin
+benchmark/index_storage/output/index.json
 benchmark/crawl/output/pages.csv
 
 # client (React/Vite)

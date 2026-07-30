@@ -9,4 +9,5 @@ uv run index-storage-benchmark
 ```
 
 Results and both index files are written to `benchmark/index_storage/output/`.
-Use `--limit 500` for a quick sample run.
+The large generated index files are ignored; `results.json` is retained as the
+submission result. Use `--limit 500` for a quick sample run.

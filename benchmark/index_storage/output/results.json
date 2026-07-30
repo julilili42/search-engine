@@ -1,0 +1,12 @@
+{
+  "documents": 8595,
+  "repeats": 20,
+  "messagepack": {
+    "bytes": 46041498,
+    "median_load_ms": 307.34354205196723
+  },
+  "json": {
+    "bytes": 73586059,
+    "median_load_ms": 736.1364795360714
+  }
+}
