@@ -313,7 +313,9 @@ where $\hat{s}_{\mathrm{BM25F}},\hat{s}_{\mathrm{sem}}\in[0,1]$ are obtained
 by independently min--max normalizing both candidate score vectors. With
 non-negative $\alpha+\beta=1$, $s_{\mathrm{final}}\in[0,1]$. We tested mixture
 weights in increments of 0.1 on the development queries and selected
-$\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10.
+$\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10. A
+repeat of the sweep after the final language safeguard selected the same
+weights.
 Missing or incompatible embeddings fall back to BM25F.
 
 \section{Evaluation}
@@ -325,9 +327,10 @@ URL, title, and snippet. We select the design and
 $\alpha/\beta$ by nDCG@10, then freeze them. Before retrieval, we define ten
 new test queries covering distinct local and informational needs absent from
 development. After the final language safeguard was applied, we reran the
-frozen variants and judged newly surfaced pooled results. The test pool contains
-308 judgments and the development pool 755. nDCG@20, MRR@10, and warmed API
-latency provide complementary evidence.
+frozen variants, repeated the weight sweep, and judged newly surfaced pooled
+results. The repeated sweep confirmed rather than changed the frozen weights.
+The test pool contains 308 judgments and the development pool 788. nDCG@20,
+MRR@10, and warmed API latency provide complementary evidence.
 Latency includes query encoding in a warmed process, but excludes startup,
 artifact loading, HTTP transport, and rendering.
 
@@ -342,11 +345,11 @@ re-ranks BM25F's top 100; latency is mean warmed API time.}
 \toprule
 Set & Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
 \midrule
-Dev. (20) & BM25F    & no  & no  & 0.5250 & 0.5436 & 0.9350 &  1.79 \\
- & BM25F + proximity & yes & no  & 0.5042 & 0.5327 & 0.9017 & 15.61 \\
- & BM25F + semantic  & no  & yes & \textbf{0.5953} & \textbf{0.6652} &
+Dev. (20) & BM25F    & no  & no  & 0.5250 & 0.5412 & 0.9350 &  1.79 \\
+ & BM25F + proximity & yes & no  & 0.5042 & 0.5304 & 0.9017 & 15.61 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5953} & \textbf{0.6619} &
   \textbf{0.9375} & 57.37 \\
- & Full              & yes & yes & 0.5849 & 0.6577 & \textbf{0.9375} & 57.22 \\
+ & Full              & yes & yes & 0.5849 & 0.6543 & \textbf{0.9375} & 57.22 \\
 \midrule
 Test (10) & BM25F    & no  & no  & 0.5382 & 0.5798 & 0.8600 & 1.88 \\
  & BM25F + semantic  & no  & yes & \textbf{0.5965} & \textbf{0.6807} &
