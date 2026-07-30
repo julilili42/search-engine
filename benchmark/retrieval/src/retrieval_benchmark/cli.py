@@ -8,6 +8,8 @@ import math
 from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
+
 from tuebingen_search.paths import DEFAULT_EMBEDDINGS_PATH
 from tuebingen_search.search import ALPHA, BETA, RERANK_CANDIDATES
 
@@ -226,26 +228,71 @@ def weight_pairs() -> list[tuple[float, float]]:
     return [(alpha / 10, (10 - alpha) / 10) for alpha in range(11)]
 
 
+def reweight_results(lexical, semantic, alpha, beta):
+    results = {}
+    for query_id, candidates in lexical.items():
+        semantic_by_path = {result["path"]: result for result in semantic[query_id]}
+        if {result["path"] for result in candidates} != set(semantic_by_path):
+            raise ValueError(f"Semantic run changed the candidate set for query {query_id}")
+
+        lexical_scores = np.array([result["score"] for result in candidates])
+        semantic_scores = np.array([
+            semantic_by_path[result["path"]]["embedding_score"]
+            for result in candidates
+        ])
+
+        def normalize(scores):
+            spread = scores.max() - scores.min()
+            return (scores - scores.min()) / spread if spread > 0 else np.zeros_like(scores)
+
+        blended = alpha * normalize(lexical_scores) + beta * normalize(semantic_scores)
+        results[query_id] = [candidates[index] for index in np.argsort(-blended)]
+    return results
+
+
 def sweep() -> None:
     data_dir, output_dir = paths("dev")
     queries = read_queries(data_dir / "queries.tsv")
     qrels = read_qrels(data_dir / "qrels.tsv")
+    runs_dir = output_dir / "runs"
+    lexical_path = runs_dir / "bm25f.json"
+    semantic_path = runs_dir / "bm25f-semantic.json"
+    lexical_payload = json.loads(lexical_path.read_text(encoding="utf-8"))
+    semantic_payload = json.loads(semantic_path.read_text(encoding="utf-8"))
+    lexical = {
+        int(query_id): results
+        for query_id, results in lexical_payload["results"].items()
+    }
+    semantic = {
+        int(query_id): results
+        for query_id, results in semantic_payload["results"].items()
+    }
+    latencies = [float(value) for value in semantic_payload["latencies_ms"].values()]
     rows = []
+    rankings = []
     for alpha, beta in weight_pairs():
-        results, latencies = search_api_results(
-            INDEX,
-            queries,
-            TOP_N,
-            use_proximity=False,
-            use_semantic=True,
-            alpha=alpha,
-            beta=beta,
-        )
+        results = reweight_results(lexical, semantic, alpha, beta)
+        rankings.append(results)
         rows.append({
             "alpha": alpha,
             "beta": beta,
             **asdict(compute_metrics(queries, qrels, results, latencies)),
         })
+
+    pool = {
+        (query_id, normalize_url(str(result["url"])))
+        for results in rankings
+        for query_id, query_results in results.items()
+        for result in query_results[:POOL_DEPTH]
+        if result.get("url")
+    }
+    judged = {
+        (query_id, url)
+        for query_id, query_qrels in qrels.items()
+        for url in query_qrels
+    }
+    if missing := pool - judged:
+        raise ValueError(f"{len(missing)} pooled weight-sweep results have no relevance judgment")
 
     output_dir /= "weights"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -266,6 +313,17 @@ def sweep() -> None:
         f"{table}\n\n"
         f"Best nDCG@10: alpha={best['alpha']:.1f}, beta={best['beta']:.1f} "
         f"({best['ndcg_10']:.4f}).\n",
+        encoding="utf-8",
+    )
+    (output_dir / "manifest.json").write_text(
+        json.dumps({
+            "bm25f_run_sha256": file_hash(lexical_path),
+            "bm25f_semantic_run_sha256": file_hash(semantic_path),
+            "qrels_sha256": file_hash(data_dir / "qrels.tsv"),
+            "source_manifest": json.loads(
+                (output_dir.parent / "manifest.json").read_text(encoding="utf-8")
+            ),
+        }, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
