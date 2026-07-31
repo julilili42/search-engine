@@ -404,20 +404,19 @@ downloadable TSV results.
 \end{figure*}
 
 \section{Limitations}
-The single-assessor grades use retrieved metadata, and both pools contain only
-results produced by the compared systems. The independent test
-avoids tuning on reported results, but ten queries remain too few to establish
-statistical significance or superiority beyond this collection. It is also
-separate from the official five-query course evaluation.
+Collection coverage is source-skewed: 45.0\% of accepted pages come from the
+University of Tübingen and its subdomains. Future work could improve source
+diversity through organization-level crawl budgets and stronger saturation
+penalties.
+
+A single assessor limits the robustness of the relevance judgments. Moreover,
+ten queries are insufficient to establish statistical significance or
+superiority beyond this collection.
 
 The verdict benchmarks use one labeling policy and relatively small test sets,
 including the 147-example \textsc{PageVerdict} comparison set. Their results
 therefore support the crawler design but do not establish performance on other
 domains.
-
-Language identification is automated and conservative. Mixed-language pages
-may remain indexed, while short pages are retained when too little text is
-available for a reliable decision.
 
 \balance
 \section{Conclusion}
