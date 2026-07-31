@@ -83,10 +83,11 @@ The \href{https://github.com/julilili42/search-engine}{search system}
 \section{Focused Crawling and Storage}
 \subsection{Crawl Strategy}
 Seeds were selected manually, favoring aggregator pages expected to expose
-many relevant outgoing links. The focused crawler prioritizes links that are
-likely to lead to Tübingen-related content. It follows the Robots Exclusion
-Protocol \citep{rfc9309} and filters fetched pages using the HTML
-\texttt{lang} attribute. Multiple
+many relevant outgoing links. Sitemaps declared in \texttt{robots.txt} add up
+to 1,000 same-origin URLs per seed origin to the frontier. The focused crawler
+prioritizes links that are likely to lead to Tübingen-related content. It
+follows the Robots Exclusion Protocol \citep{rfc9309} and filters fetched pages
+using the HTML \texttt{lang} attribute. Multiple
 workers consume a global priority frontier organized into per-host queues,
 with at most one active request per host. Host cooldowns, page caps, and early
 stopping after repeated rejects prevent individual domains from dominating the
@@ -294,8 +295,9 @@ not improve retrieval quality.
 The second stage uses the general-purpose
 \texttt{nli-mpnet-base-v2} encoder, whose sentence-embedding training uses
 SNLI and MultiNLI natural-language-inference data
-\citep{nli-mpnet-base-v2}. Each document is split into at most 20 overlapping
-2,000-character passages, and its title is embedded separately. With cosine
+\citep{nli-mpnet-base-v2}. To prevent relevant content from being diluted on
+long pages, documents are split into up to 20 overlapping 2,000-character
+passages, with titles embedded separately. With cosine
 similarity between the query $q$, title $t_d$, and passages $p_i$, the
 heuristically weighted semantic score is
 \[
@@ -381,7 +383,8 @@ organize this projection, separating results about the Neckar river from
 geographic entities such as Neckar-Alb. Overlapping stars fan out on hover,
 and pagination pans the camera between result constellations. The spatial view
 augments the ranked cards without altering retrieval order.
-Batch retrieval returns query ID, rank, URL, and score as TSV.
+The web client supports batch retrieval through TSV query uploads and
+downloadable TSV results.
 
 \begin{figure*}[t]
   \centering
