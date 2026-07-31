@@ -132,7 +132,7 @@ and 546 \textsc{LinkVerdict} examples.
   \resizebox{\columnwidth}{!}{%
   \begin{tikzpicture}[
     baseline=(current bounding box.south),
-    node distance=3mm and 5mm,
+    node distance=3mm,
     box/.style={
       draw,
       rounded corners,
@@ -142,25 +142,41 @@ and 546 \textsc{LinkVerdict} examples.
       text width=21mm,
       inner sep=1.5pt
     },
+    train/.style={
+      draw,
+      rounded corners,
+      align=center,
+      font=\tiny,
+      minimum height=7mm,
+      text width=17mm,
+      inner sep=1pt,
+      fill=TUdark!4
+    },
     arrow/.style={-{Latex[length=1.7mm]}, semithick}
   ]
     \node[box, fill=TUdark!8] (page-samples) {Serper +\\crawl pages};
     \node[box, fill=TUgold!12, right=of page-samples] (page-labels)
       {Qwen + human\\($n=2{,}538$)};
-    \node[box, fill=TUblue!10, right=of page-labels] (page-model)
+    \node[train, right=of page-labels] (page-train)
+      {TF--IDF +\\logistic regression};
+    \node[box, fill=TUblue!10, right=of page-train] (page-model)
       {\textsc{PageVerdict}};
 
     \node[box, fill=TUdark!8, below=of page-samples] (link-samples)
       {Crawler link\\samples};
     \node[box, fill=TUgold!12, right=of link-samples] (link-labels)
       {Human only\\($n=2{,}037$)};
-    \node[box, fill=TUblue!10, right=of link-labels] (link-model)
+    \node[train, right=of link-labels] (link-train)
+      {TF--IDF +\\logistic regression};
+    \node[box, fill=TUblue!10, right=of link-train] (link-model)
       {\textsc{LinkVerdict}};
 
     \draw[arrow] (page-samples) -- (page-labels);
-    \draw[arrow] (page-labels) -- (page-model);
+    \draw[arrow] (page-labels) -- (page-train);
+    \draw[arrow] (page-train) -- (page-model);
     \draw[arrow] (link-samples) -- (link-labels);
-    \draw[arrow] (link-labels) -- (link-model);
+    \draw[arrow] (link-labels) -- (link-train);
+    \draw[arrow] (link-train) -- (link-model);
   \end{tikzpicture}
   }
   \caption{Offline training of the TF--IDF logistic-regression verdict models.}
