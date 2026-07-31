@@ -2,11 +2,11 @@
   "documents": 8595,
   "repeats": 20,
   "messagepack": {
-    "bytes": 46041498,
-    "median_load_ms": 307.34354205196723
+    "bytes": 44147126,
+    "median_load_ms": 219.87991651985794
   },
   "json": {
-    "bytes": 73586059,
-    "median_load_ms": 736.1364795360714
+    "bytes": 69996388,
+    "median_load_ms": 623.7321250373498
   }
 }
