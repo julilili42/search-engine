@@ -77,8 +77,8 @@ interface.
 
 The \href{https://github.com/julilili42/search-engine}{search system}
 (\texttt{SEARCH-COMMIT}) and
-\href{https://github.com/julilili42/labeling-lab}{crawl-model training}
-(\texttt{LABELING-COMMIT}) are maintained in separate repositories.
+\href{https://github.com/julilili42/labeling-lab/tree/a81e4957cf8ebe00183c47a51650002ee6dc1386}{crawl-model training}
+(\texttt{a81e495}) are maintained in separate repositories.
 
 \section{Focused Crawling and Storage}
 \subsection{Crawl Strategy}
@@ -97,9 +97,10 @@ for offline \textsc{PageVerdict} labeling \citep{serper}.
 \subsection{Learned Focus Control}
 Static URL and keyword heuristics proved too rigid in early qualitative
 experiments. We therefore use a teacher--student setup to learn crawl-focus
-signals from human judgments and Qwen-generated labels \citep{qwen25}. The resulting
-lightweight student models keep the collection compact while favoring relevant,
-useful pages.
+signals from human judgments and Qwen-generated labels \citep{qwen25}. Limited
+manual-labeling capacity motivated the use of LLM supervision \citep{wang2021}.
+The resulting lightweight student models keep the collection compact while
+favoring relevant, useful pages.
 
 \textsc{PageVerdict} evaluates fetched pages, while \textsc{LinkVerdict}
 prioritizes the links extracted from them. Both use word- and character-level
@@ -113,8 +114,9 @@ validation set.
 
 Figure~\ref{fig:verdict-training} summarizes offline training, and
 Figure~\ref{fig:crawler-runtime} shows the crawl loop. For
-\textsc{PageVerdict}, Qwen~2.5:7B provides automatically generated labels alongside human
-judgments. German pages receive negative labels regardless of topical
+\textsc{PageVerdict}, Qwen~2.5:7B provides weak labels under a frozen
+\href{https://github.com/julilili42/labeling-lab/blob/a81e4957cf8ebe00183c47a51650002ee6dc1386/src/auto_labeling/prompts/page-v4.txt}{prompt (\texttt{page-v4})},
+alongside human judgments. German pages receive negative labels regardless of topical
 relevance. However, the student model still accepts some pages with misleading
 English metadata, \texttt{/en/} URLs, or English navigation around German main
 content.
