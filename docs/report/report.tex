@@ -56,7 +56,7 @@ BM25F first stage, semantic second-stage re-ranking, batch retrieval, and an
 interactive result interface. In a diagnostic 20-query ablation, semantic
 re-ranking outperforms BM25F and the evaluated proximity bonus does not improve
 effectiveness. After configuration was frozen, re-ranking improved nDCG@10
-from 0.5382 to 0.5965 on a separate 10-query test set.
+from 0.4867 to 0.5300 on a separate 10-query test set.
 \end{abstract}
 
 \section{Introduction}
@@ -268,13 +268,16 @@ English. This conservative safeguard excluded 1,433 pages, reducing the final
 index from 10,028 to 8,595 documents without altering the stored crawl.
 
 \subsection{Lexical Retrieval}
-Text is lowercased and split into alphanumeric tokens, excluding single-character
-tokens and English stopwords. The inverted index covers body,
-title, and URL fields and stores body positions for snippets and proximity
-scoring. It is serialized with MessagePack. On the complete 8,595-document
-index, MessagePack was 37\% smaller than compact JSON (46.0 vs.\ 73.6\,MB) and
-had a 2.40-times lower median deserialization time over 20 runs (307 vs.\
-736\,ms). For term $t$, document $d$, and fields $f$, BM25F computes
+After Unicode normalization, text is lowercased, split into alphanumeric
+tokens, and filtered for single-character tokens and English stopwords. The
+Rust-backed \texttt{py-rust-stemmers} package applies English Snowball stemming
+to all index fields and queries \citep{pyruststemmers}; unstemmed body tokens
+remain for snippets. Stemmed body positions support proximity scoring. The
+index is serialized with MessagePack. On the
+complete 8,595-document index, MessagePack was 37\% smaller than compact JSON
+(44.1 vs.\ 70.0\,MB), while compact JSON took 2.84 times as long to
+deserialize over 20 runs (624 vs.\ 220\,ms). For term $t$, document $d$, and fields $f$,
+BM25F computes
 \[
 \tilde f_{t,d}=\sum_f w_f
 \frac{f_{t,d,f}}{1-b+b\,|d_f|/\overline{|d_f|}},
@@ -318,22 +321,23 @@ by independently min--max normalizing both candidate score vectors. With
 non-negative $\alpha+\beta=1$, $s_{\mathrm{final}}\in[0,1]$. We tested mixture
 weights in increments of 0.1 on the development queries and selected
 $\alpha=0.4$ and $\beta=0.6$ because they achieved the highest nDCG@10. A
-repeat of the sweep after the final language safeguard selected the same
-weights.
+repeat of the sweep after the final language safeguard and stemming selected
+the same weights.
 Missing or incompatible embeddings fall back to BM25F.
 
 \section{Evaluation}
 We first use 20 development queries covering broad topics, named entities, and
 specific tasks to select the retrieval design. The pool unites the top 20 from
-the four ablation variants and all eleven fusion weights. A single assessor
-grades each query--URL pair from 0 (irrelevant) to 3 (highly relevant) using
-URL, title, and snippet. We select the design and
+the four ablation variants, all eleven fusion weights, and the corresponding
+no-stemming baseline. A single assessor grades each query--URL pair from 0
+(irrelevant) to 3 (highly relevant) using URL, title, and snippet. We select
+the design and
 $\alpha/\beta$ by nDCG@10, then freeze them. Before retrieval, we define ten
 new test queries covering distinct local and informational needs absent from
-development. After the final language safeguard was applied, we reran the
-frozen variants, repeated the weight sweep, and judged newly surfaced pooled
-results. The repeated sweep confirmed rather than changed the frozen weights.
-The test pool contains 308 judgments and the development pool 788. nDCG@20,
+development. After the final language safeguard and stemming were applied, we
+reran the frozen variants, repeated the weight sweep, and judged newly surfaced
+pooled results. The repeated sweep confirmed rather than changed the frozen
+weights. The test pool contains 530 judgments and the development pool 1,209. nDCG@20,
 MRR@10, and warmed API latency provide complementary evidence.
 Latency includes query encoding in a warmed process, but excludes startup,
 artifact loading, HTTP transport, and rendering.
@@ -341,7 +345,7 @@ artifact loading, HTTP transport, and rendering.
 \begin{table*}[t]
 \centering
 \caption{Development ablation and frozen test results. Semantic scoring
-re-ranks BM25F's top 100; latency is mean warmed API time.}
+re-ranks BM25F's top 100. Latency is mean warmed API time.}
 \label{tab:retrieval-evaluation}
 \small
 \setlength{\tabcolsep}{6pt}
@@ -349,20 +353,20 @@ re-ranks BM25F's top 100; latency is mean warmed API time.}
 \toprule
 Set & Variant & Proximity & Semantic & nDCG@10 & nDCG@20 & MRR@10 & ms/query \\
 \midrule
-Dev. (20) & BM25F    & no  & no  & 0.5250 & 0.5412 & 0.9350 &  1.79 \\
- & BM25F + proximity & yes & no  & 0.5042 & 0.5304 & 0.9017 & 15.61 \\
- & BM25F + semantic  & no  & yes & \textbf{0.5953} & \textbf{0.6619} &
-  \textbf{0.9375} & 57.37 \\
- & Full              & yes & yes & 0.5849 & 0.6543 & \textbf{0.9375} & 57.22 \\
+Dev. (20) & BM25F    & no  & no  & 0.5434 & 0.5394 & 0.9250 &  2.01 \\
+ & BM25F + proximity & yes & no  & 0.5310 & 0.5308 & 0.9167 & 15.30 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.6260} & \textbf{0.6252} &
+  \textbf{0.9375} & 56.12 \\
+ & Full              & yes & yes & 0.6061 & 0.6191 & 0.9333 & 59.33 \\
 \midrule
-Test (10) & BM25F    & no  & no  & 0.5382 & 0.5798 & 0.8600 & 1.88 \\
- & BM25F + semantic  & no  & yes & \textbf{0.5965} & \textbf{0.6807} &
-  \textbf{0.8700} & 58.44 \\
+Test (10) & BM25F    & no  & no  & 0.4867 & 0.5002 & 0.8250 & 2.10 \\
+ & BM25F + semantic  & no  & yes & \textbf{0.5300} & \textbf{0.5989} &
+  \textbf{0.8500} & 79.40 \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-Semantic re-ranking improves development nDCG@10 by 0.0702 over BM25F, whereas proximity
+Semantic re-ranking improves development nDCG@10 by 0.0826 over BM25F, whereas proximity
 reduces effectiveness both alone and in the full system. We therefore select
 BM25F with semantic re-ranking and $\alpha=0.4,\beta=0.6$.
 Table~\ref{tab:retrieval-evaluation} also reports the subsequent frozen test
