@@ -8,6 +8,7 @@ dependencies = [
     "lingua-language-detector>=2.2.0",
     "msgpack>=1.1.0",
     "numpy>=2.4.6",
+    "py-rust-stemmers==0.1.8",
     "selectolax>=0.4.10",
     "torch>=2.13.0",
     "transformers>=5.13.0",

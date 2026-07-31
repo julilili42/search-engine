@@ -1,5 +1,5 @@
 # search/tests/test_tokenizer.py
-from tuebingen_search.tokenizer import tokenize
+from tuebingen_search.tokenizer import tokenize, tokenize_for_search
 
 
 def test_tokenize_splits_on_whitespace_and_lowercases():
@@ -37,6 +37,19 @@ def test_tokenize_keeps_digits_inside_alphabetic_token():
 
 def test_tokenize_handles_umlauts():
     assert tokenize("Tübingen Straße") == ["tübingen", "straße"]
+
+
+def test_tokenize_normalizes_decomposed_unicode():
+    assert tokenize("Tu\u0308bingen") == ["tübingen"]
+
+
+def test_tokenize_for_search_stems_inflections():
+    assert tokenize_for_search("attraction attractions connected connections") == [
+        "attract",
+        "attract",
+        "connect",
+        "connect",
+    ]
 
 
 def test_tokenize_empty_and_whitespace_only():

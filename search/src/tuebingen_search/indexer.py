@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from lingua import Language, LanguageDetectorBuilder
 
 from .html import extract_text_from_html, is_html_file
-from .tokenizer import tokenize
+from .tokenizer import stem_tokens, tokenize, tokenize_for_search
 from .models import (
     AverageFieldLengths,
     Document,
@@ -88,20 +88,21 @@ def index(index_path: Path, pages_db: PageLoad) -> None:
             logger.info("Skipped non-English page: %s", record.url)
             continue
         terms = tokenize(text)
+        search_terms = stem_tokens(terms)
 
         document = Document(
             path=file_path,
             url=record.url,
-            length=len(terms),
+            length=len(search_terms),
             terms=tuple(terms),
             title=record.title or None,
         )
         positions: TermPosition = defaultdict(list)
-        for position, term in enumerate(terms):
+        for position, term in enumerate(search_terms):
             positions[term].append(position)
 
         term_positions[document] = positions
-        term_frequency_index[document] = compute_tf(terms)
+        term_frequency_index[document] = compute_tf(search_terms)
 
     logger.info("Computing inverted index...")
     search_index = _build_search_index(term_frequency_index, term_positions)
@@ -122,8 +123,8 @@ def _url_field_text(url: str | None) -> str:
 def _document_fields(document: Document, body_frequency: TermFrequency) -> FieldTermFrequencies:
     return {
         DocumentField.BODY: body_frequency,
-        DocumentField.TITLE: compute_tf(tokenize(document.title or "")),
-        DocumentField.URL: compute_tf(tokenize(_url_field_text(document.url))),
+        DocumentField.TITLE: compute_tf(tokenize_for_search(document.title or "")),
+        DocumentField.URL: compute_tf(tokenize_for_search(_url_field_text(document.url))),
     }
 
 

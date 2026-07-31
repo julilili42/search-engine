@@ -118,6 +118,19 @@ def test_search_query_is_tokenized_and_deduplicated(index_path):
     assert [(r.path, r.score) for r in twice] == [(r.path, r.score) for r in once]
 
 
+def test_search_matches_singular_and_plural_forms(tmp_path):
+    page = tmp_path / "attractions.html"
+    page.write_text("<p>Popular attractions</p>", encoding="utf-8")
+    index_path = tmp_path / "index.bin"
+    index(index_path, make_page_load(tmp_path / "pages.sqlite", {page: "text/html"}))
+
+    singular = search(index_path, "attraction", top_n=10)
+    plural = search(index_path, "attractions", top_n=10)
+
+    assert [result.path for result in singular] == [result.path for result in plural] == [page]
+    assert singular[0].snippet == "popular attractions"
+
+
 def test_generate_snippet_includes_query_term_with_context():
     terms = ["zero", "one", "two", "target", "three", "four", "five"]
 
@@ -154,7 +167,7 @@ def test_search_does_not_read_the_source_file(tmp_path):
     missing_page = tmp_path / "missing.html"
     index = SearchIndex(
         documents=[Document(path=missing_page, url=None, length=1, terms=("apple",))],
-        inverted_index={"apple": [Posting(doc_index=0, score=1.0, positions=[0])]},
+        inverted_index={"appl": [Posting(doc_index=0, score=1.0, positions=[0])]},
     )
 
     results = search_index(index, "apple", top_n=10)
@@ -178,7 +191,7 @@ def test_search_index_reports_embedding_score(tmp_path, monkeypatch):
     index = SearchIndex(
         documents=documents,
         inverted_index={
-            "apple": [
+            "appl": [
                 Posting(doc_index=0, score=1.0, positions=[0]),
                 Posting(doc_index=1, score=1.0, positions=[0]),
             ]
@@ -203,7 +216,7 @@ def test_search_index_embedding_score_is_none_without_embeddings(tmp_path):
         documents=[
             Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",))
         ],
-        inverted_index={"apple": [Posting(doc_index=0, score=1.0, positions=[0])]},
+        inverted_index={"appl": [Posting(doc_index=0, score=1.0, positions=[0])]},
     )
 
     results = search_index(index, "apple", top_n=10)
@@ -227,7 +240,7 @@ def test_search_index_reports_embedding_coords(tmp_path, monkeypatch):
     index = SearchIndex(
         documents=documents,
         inverted_index={
-            "apple": [
+            "appl": [
                 Posting(doc_index=0, score=1.0, positions=[0]),
                 Posting(doc_index=1, score=1.0, positions=[0]),
             ]
@@ -258,7 +271,7 @@ def test_search_index_embedding_coords_are_none_without_category_axes(tmp_path, 
         documents=[
             Document(path=tmp_path / "a.html", url="https://a.test", length=1, terms=("apple",))
         ],
-        inverted_index={"apple": [Posting(doc_index=0, score=1.0, positions=[0])]},
+        inverted_index={"appl": [Posting(doc_index=0, score=1.0, positions=[0])]},
     )
     doc_embeddings = np.array([[1.0, 0.0]])
     monkeypatch.setattr(search_module, "embed_texts", lambda texts: np.array([[1.0, 0.0]]))

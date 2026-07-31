@@ -19,7 +19,7 @@ from .models import (
     TermPosition,
 )
 from .paths import DEFAULT_EMBEDDINGS_PATH
-from .tokenizer import tokenize
+from .tokenizer import tokenize_for_search
 from .storage import load_index, elapsed
 
 
@@ -53,7 +53,7 @@ def search_index(
     beta: float = BETA,
 ) -> list[SearchResult]:
     start = time.perf_counter()
-    query_terms = set(tokenize(query))
+    query_terms = set(tokenize_for_search(query))
 
     if not query_terms:
         logger.warning("No searchable query terms in query.")

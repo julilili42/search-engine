@@ -31,8 +31,8 @@ def test_document_fields_splits_body_title_url():
     fields = _document_fields(document, {"apple": 1})
 
     assert fields[DocumentField.BODY] == {"apple": 1}
-    assert fields[DocumentField.TITLE] == {"fresh": 1, "apples": 1}
-    assert fields[DocumentField.URL] == {"food": 1, "guide": 1}
+    assert fields[DocumentField.TITLE] == {"fresh": 1, "appl": 1}
+    assert fields[DocumentField.URL] == {"food": 1, "guid": 1}
 
 
 def test_normalize_field_tf_penalizes_long_fields():

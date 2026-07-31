@@ -1,3 +1,11 @@
+import unicodedata
+
+from py_rust_stemmers import SnowballStemmer
+
+
+_STEMMER = SnowballStemmer("english")
+
+
 # Based on NLTK's English stopwords corpus
 STOPWORDS = {
     "a",
@@ -180,6 +188,7 @@ STOPWORDS = {
 
 
 def tokenize(text: str) -> list[str]:
+    text = unicodedata.normalize("NFC", text)
     tokens: list[str] = []
     i = 0
 
@@ -208,3 +217,11 @@ def tokenize(text: str) -> list[str]:
             tokens.append(token)
 
     return tokens
+
+
+def stem_tokens(tokens: list[str]) -> list[str]:
+    return _STEMMER.stem_words(tokens)
+
+
+def tokenize_for_search(text: str) -> list[str]:
+    return stem_tokens(tokenize(text))
