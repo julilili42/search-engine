@@ -7,3 +7,7 @@ members = [
     "benchmark/index_storage",
     "benchmark/retrieval",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+pythonpath = ["search/tests"]
